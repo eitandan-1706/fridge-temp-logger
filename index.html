@@ -274,24 +274,40 @@ async function updateSheets() {
   if (logs.length === 0) return alert('No logs to upload yet!');
 
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
-  if (statusEl) { statusEl.style.display = 'block'; statusEl.style.background = '#e8f0fe'; statusEl.style.color = '#1a56db'; statusEl.textContent = 'Connecting to Google Sheets...'; }
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#e8f0fe';
+    statusEl.style.color = '#1a56db';
+    statusEl.innerHTML = 'Connecting to Google Sheets...<div style="background:#c7d7f7;border-radius:100px;height:6px;margin-top:8px;overflow:hidden"><div id="sheets-progress" style="height:100%;background:#1a56db;border-radius:100px;width:0%;transition:width 0.4s"></div></div>';
+  }
+
+  const setProgress = (pct, msg) => {
+    const bar = document.getElementById('sheets-progress');
+    if (bar) bar.style.width = pct + '%';
+    if (statusEl) {
+      const existing = statusEl.innerHTML.split('<div')[0];
+      statusEl.innerHTML = msg + '<div style="background:#c7d7f7;border-radius:100px;height:6px;margin-top:8px;overflow:hidden"><div id="sheets-progress" style="height:100%;background:#1a56db;border-radius:100px;width:' + pct + '%;transition:width 0.4s"></div></div>';
+    }
+  };
 
   try {
     // Group logs by fridge number
     const byFridge = {};
     logs.forEach(r => {
-      const key = `Fridge ${r.fridge}`;
+      const key = 'Fridge ' + r.fridge;
       if (!byFridge[key]) byFridge[key] = [];
       byFridge[key].push(r);
     });
 
+    const fridges = Object.keys(byFridge);
+    const fridgeCount = fridges.length;
     let successCount = 0;
-    const fridgeCount = Object.keys(byFridge).length;
+    let doneCount = 0;
 
-    for (const [fridgeName, readings] of Object.entries(byFridge)) {
-      if (statusEl) statusEl.textContent = `Updating ${fridgeName}...`;
+    for (const fridgeName of fridges) {
+      const readings = byFridge[fridgeName];
+      setProgress(Math.round((doneCount / fridgeCount) * 90), 'Updating ' + fridgeName + ' (' + (doneCount+1) + ' of ' + fridgeCount + ')...');
 
-      // Send all readings for this fridge in one call
       const rows = [...readings].reverse().map(r => ({
         date: r.date,
         time: r.time,
@@ -302,29 +318,28 @@ async function updateSheets() {
       const resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ fridge: fridgeName, rows })
+        body: JSON.stringify({ fridge: fridgeName, rows: rows })
       });
 
-      if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
-      const result = await resp.json();
-      if (result.status !== 'ok') throw new Error(result.error || 'Unknown error from Apps Script');
+      let result;
+      const text = await resp.text();
+      try { result = JSON.parse(text); } catch(e) { throw new Error('Bad response: ' + text.slice(0,100)); }
+      if (result.status !== 'ok') throw new Error(result.error || 'Script error');
 
       successCount += readings.length;
+      doneCount++;
     }
 
-    if (statusEl) {
-      statusEl.style.background = '#dcfce7';
-      statusEl.style.color = '#16a34a';
-      statusEl.textContent = `✓ ${successCount} reading${successCount!==1?'s':''} synced across ${fridgeCount} fridge tab${fridgeCount!==1?'s':''}!`;
-    }
+    setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + '!');
+    if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
 
   } catch(e) {
-    console.error(e);
+    console.error('Sheets error:', e);
     if (statusEl) {
       statusEl.style.background = '#fef2f2';
       statusEl.style.color = '#dc2626';
-      statusEl.textContent = '✗ Error: ' + e.message;
+      statusEl.innerHTML = '✗ Error: ' + e.message;
     }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
   }
