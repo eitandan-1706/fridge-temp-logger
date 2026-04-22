@@ -33,6 +33,7 @@
   .btn-primary:disabled { background: var(--gray-400); cursor: not-allowed; }
   .btn-secondary { background: var(--gray-100); color: var(--gray-800); }
   .btn-success { background: var(--green); color: white; }
+  .btn-download { background: #7c3aed; color: white; }
   .upload-zone { border: 2px dashed var(--gray-200); border-radius: var(--radius); padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   .upload-zone:hover { border-color: var(--blue-mid); background: var(--blue-light); }
   .upload-zone .icon { font-size: 36px; margin-bottom: 10px; }
@@ -66,14 +67,16 @@
   .step-dot.active { background: var(--blue); width: 18px; border-radius: 3px; }
   .config-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--gray-100); }
   .config-row:last-child { border-bottom: none; }
-  .config-row input { font-size: 13px; padding: 8px 10px; }
-  textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-200); border-radius: 10px; font-size: 13px; font-family: monospace; resize: vertical; min-height: 80px; outline: none; }
-  textarea:focus { border-color: var(--blue-mid); }
   .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--gray-200); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .info-note { background: var(--blue-light); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--gray-600); line-height: 1.6; }
   .info-note strong { color: var(--blue); }
   .gemini-badge { display: inline-flex; align-items: center; gap: 6px; background: #e8f5e9; color: #2e7d32; border-radius: 100px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+  .csv-badge { display: inline-flex; align-items: center; gap: 6px; background: #f3e8ff; color: #7c3aed; border-radius: 100px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .history-table th { text-align: left; padding: 6px 8px; color: var(--gray-400); font-weight: 500; border-bottom: 1px solid var(--gray-100); }
+  .history-table td { padding: 8px; border-bottom: 1px solid var(--gray-100); }
+  .history-table tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -93,14 +96,13 @@
   </div>
   <div class="card">
     <div class="gemini-badge">✦ Powered by Google Gemini — Free</div>
+    <div class="csv-badge">📄 Saves to CSV — no Google account needed</div>
     <div class="card-title">⚙️ App Setup</div>
     <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.5">Configure once — settings are saved on this device.</p>
-
     <div class="config-row">
       <label>Your Name</label>
       <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" />
     </div>
-
     <div class="config-row">
       <label>Gemini API Key (Free)</label>
       <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
@@ -108,26 +110,8 @@
         Get your free key at <strong>aistudio.google.com</strong> → Get API Key. No credit card needed.
       </div>
     </div>
-
-    <div class="config-row">
-      <label>Google Sheet ID</label>
-      <input type="text" id="cfg-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
-      <div class="info-note" style="margin-top:6px">
-        Open your Google Sheet → copy the long ID from the URL between <strong>/d/</strong> and <strong>/edit</strong>
-      </div>
-    </div>
-
-    <div class="config-row">
-      <label>Google Service Account JSON</label>
-      <textarea id="cfg-sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
-      <div class="info-note" style="margin-top:6px">
-        From <strong>Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON</strong>.<br>
-        Share your Sheet with the service account email.
-      </div>
-    </div>
-
     <div style="margin-top:16px">
-      <button class="btn btn-primary" onclick="saveSetup()">Save & Continue →</button>
+      <button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button>
     </div>
   </div>
 </div>
@@ -145,7 +129,6 @@
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="display-date"></div>
     <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-setup')">⚙ Settings</button>
   </div>
-
   <div class="card">
     <div class="card-title">📸 Add Gauge Photos</div>
     <div class="upload-zone" onclick="document.getElementById('file-input').click()">
@@ -156,8 +139,8 @@
     <input type="file" id="file-input" accept="image/*" multiple capture="environment" onchange="handleFiles(this.files)" />
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
-
   <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()">Analyse Photos</button>
+  <button class="btn btn-secondary" onclick="goTo('screen-history')" id="history-btn" style="display:none">📄 View / Download Previous Logs</button>
 </div>
 
 <!-- SCREEN 3: Processing -->
@@ -184,7 +167,7 @@
     <span id="confirm-count" style="font-size:13px;color:var(--gray-400)"></span>
   </div>
   <div id="readings-list" style="display:flex;flex-direction:column;gap:12px"></div>
-  <button class="btn btn-success" id="submit-btn" onclick="submitAll()">✓ Submit All Readings</button>
+  <button class="btn btn-success" id="submit-btn" onclick="submitAll()">✓ Confirm & Save to CSV</button>
   <button class="btn btn-secondary" onclick="goTo('screen-upload')">← Add More Photos</button>
 </div>
 
@@ -192,27 +175,37 @@
 <div class="screen" id="screen-success">
   <div class="card" style="text-align:center;padding:32px 20px">
     <div class="success-icon">✓</div>
-    <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">All Logged!</h2>
-    <p id="success-msg" style="color:var(--gray-600);font-size:14px;line-height:1.6;margin-bottom:24px"></p>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Saved!</h2>
+    <p id="success-msg" style="color:var(--gray-600);font-size:14px;line-height:1.6;margin-bottom:20px"></p>
     <div id="success-summary" style="text-align:left;margin-bottom:20px"></div>
-    <button class="btn btn-primary" onclick="logMore()">Log More Readings</button>
+    <button class="btn btn-download" onclick="downloadCSV()" style="margin-bottom:10px">⬇ Download CSV</button>
+    <button class="btn btn-primary" onclick="logMore()">📸 Log More Readings</button>
   </div>
 </div>
 
+<!-- SCREEN 6: History -->
+<div class="screen" id="screen-history">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2 style="font-size:17px;font-weight:600">📄 All Logs</h2>
+    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-upload')">← Back</button>
+  </div>
+  <div class="card">
+    <div id="history-content"></div>
+  </div>
+  <button class="btn btn-download" onclick="downloadCSV()">⬇ Download CSV</button>
+  <button class="btn btn-secondary" onclick="clearHistory()">🗑 Clear All Logs</button>
+</div>
+
 <script>
-const STATE = { name:'', geminiKey:'', sheetId:'', saJson:null, photos:[], readings:[] };
+const STATE = { name:'', geminiKey:'', photos:[], readings:[] };
+const STORAGE_KEY = 'fridge_logs';
 
 function loadSettings() {
   STATE.name = localStorage.getItem('fridge_name') || '';
   STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
-  STATE.sheetId = localStorage.getItem('fridge_sheet_id') || '';
-  const sa = localStorage.getItem('fridge_sa_json');
-  STATE.saJson = sa ? JSON.parse(sa) : null;
   if (STATE.name) document.getElementById('cfg-name').value = STATE.name;
   if (STATE.geminiKey) document.getElementById('cfg-gemini-key').value = STATE.geminiKey;
-  if (STATE.sheetId) document.getElementById('cfg-sheet-id').value = STATE.sheetId;
-  if (STATE.saJson) document.getElementById('cfg-sa-json').value = JSON.stringify(STATE.saJson, null, 2);
-  if (STATE.name && STATE.geminiKey && STATE.sheetId && STATE.saJson) {
+  if (STATE.name && STATE.geminiKey) {
     goTo('screen-upload'); refreshUploadScreen();
   }
 }
@@ -220,19 +213,11 @@ function loadSettings() {
 function saveSetup() {
   const name = document.getElementById('cfg-name').value.trim();
   const key = document.getElementById('cfg-gemini-key').value.trim();
-  const sheet = document.getElementById('cfg-sheet-id').value.trim();
-  const saRaw = document.getElementById('cfg-sa-json').value.trim();
   if (!name) return alert('Please enter your name.');
   if (!key) return alert('Please enter your Gemini API key.');
-  if (!sheet) return alert('Please enter the Google Sheet ID.');
-  if (!saRaw) return alert('Please paste your Google service account JSON.');
-  let saJson;
-  try { saJson = JSON.parse(saRaw); } catch(e) { return alert('Service account JSON is invalid. Please check the format.'); }
-  STATE.name = name; STATE.geminiKey = key; STATE.sheetId = sheet; STATE.saJson = saJson;
+  STATE.name = name; STATE.geminiKey = key;
   localStorage.setItem('fridge_name', name);
   localStorage.setItem('fridge_gemini_key', key);
-  localStorage.setItem('fridge_sheet_id', sheet);
-  localStorage.setItem('fridge_sa_json', JSON.stringify(saJson));
   goTo('screen-upload'); refreshUploadScreen();
 }
 
@@ -240,12 +225,15 @@ function refreshUploadScreen() {
   document.getElementById('display-name').textContent = STATE.name;
   document.getElementById('display-date').textContent = new Date().toLocaleDateString('en-AU', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
   STATE.photos = []; renderThumbs();
+  const logs = getLogs();
+  document.getElementById('history-btn').style.display = logs.length > 0 ? 'block' : 'none';
 }
 
 function goTo(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
+  if (id === 'screen-history') renderHistory();
 }
 
 function handleFiles(files) {
@@ -331,7 +319,7 @@ function renderConfirmScreen() {
     const bc = r.confidence==='high' ? 'badge-ok' : 'badge-warn';
     const bt = r.confidence==='high' ? '✓ Clear' : '⚠ Check';
     const dtStr = new Date(r.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const errMsg = r.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px">Error: ${r.error}</div>` : '';
+    const errMsg = r.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px">⚠ ${r.error}</div>` : '';
     return `<div class="reading-card">
       <img src="${r.photo.dataUrl}" />
       <div class="fields">
@@ -349,69 +337,92 @@ function renderConfirmScreen() {
   }).join('');
 }
 
-async function submitAll() {
+// ---- CSV / Storage ----
+
+function getLogs() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function saveLogs(logs) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+}
+
+function submitAll() {
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Submitting...';
-  const results = [];
-  for (const r of STATE.readings) {
-    try { await appendToSheet(r); results.push({fridge:r.fridge,temp:r.temp,ok:true}); }
-    catch(e) { results.push({fridge:r.fridge,temp:r.temp,ok:false,err:e.message}); console.error(e); }
-  }
-  showSuccess(results);
-}
+  btn.innerHTML = '<span class="spinner"></span>Saving...';
 
-async function getGoogleToken() {
-  const sa = STATE.saJson;
-  const now = Math.floor(Date.now()/1000);
-  const encode = obj => btoa(JSON.stringify(obj)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-  const header = encode({alg:'RS256',typ:'JWT'});
-  const payload = encode({iss:sa.client_email,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
-  const sigInput = `${header}.${payload}`;
-  const keyData = sa.private_key.replace('-----BEGIN PRIVATE KEY-----','').replace('-----END PRIVATE KEY-----','').replace(/\s/g,'');
-  const binaryKey = Uint8Array.from(atob(keyData),c=>c.charCodeAt(0));
-  const cryptoKey = await crypto.subtle.importKey('pkcs8',binaryKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
-  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5',cryptoKey,new TextEncoder().encode(sigInput));
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-  const jwt = `${sigInput}.${sigB64}`;
-  const tokenResp = await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`});
-  const tokenData = await tokenResp.json();
-  if (!tokenData.access_token) throw new Error('Google auth failed: '+JSON.stringify(tokenData));
-  return tokenData.access_token;
-}
+  const logs = getLogs();
+  const newRows = STATE.readings.map(r => {
+    const dt = new Date(r.timestamp);
+    return {
+      date: dt.toLocaleDateString('en-AU'),
+      time: dt.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'}),
+      fridge: r.fridge,
+      temp: r.temp,
+      logged_by: STATE.name
+    };
+  });
 
-async function ensureSheet(token, title) {
-  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STATE.sheetId}`,{headers:{Authorization:`Bearer ${token}`}});
-  const data = await resp.json();
-  const exists = (data.sheets||[]).some(s=>s.properties.title===title);
-  if (!exists) {
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STATE.sheetId}:batchUpdate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests:[{addSheet:{properties:{title}}}]})});
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STATE.sheetId}/values/${encodeURIComponent(title+'!A1')}:append?valueInputOption=RAW`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({values:[['Date','Time','Temperature (°C)','Logged By']]})});
-  }
-}
+  newRows.forEach(row => logs.push(row));
+  saveLogs(logs);
 
-async function appendToSheet(reading) {
-  const token = await getGoogleToken();
-  const title = `Fridge ${reading.fridge}`;
-  await ensureSheet(token, title);
-  const dt = new Date(reading.timestamp);
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STATE.sheetId}/values/${encodeURIComponent(title+'!A:D')}:append?valueInputOption=RAW`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({values:[[dt.toLocaleDateString('en-AU'),dt.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}),reading.temp,STATE.name]]})});
-}
-
-function showSuccess(results) {
-  const ok = results.filter(r=>r.ok).length;
-  const fail = results.filter(r=>!r.ok).length;
-  document.getElementById('success-msg').textContent = `${ok} reading${ok!==1?'s':''} logged successfully${fail>0?` (${fail} failed — check browser console)`:''}  by ${STATE.name}.`;
-  document.getElementById('success-summary').innerHTML = results.map(r=>`
+  // Show success
+  const count = newRows.length;
+  document.getElementById('success-msg').textContent = `${count} reading${count!==1?'s':''} saved by ${STATE.name}. Download the CSV to share or open in Excel.`;
+  document.getElementById('success-summary').innerHTML = newRows.map(r => `
     <div class="summary-row">
       <span class="fridge-label">Fridge ${r.fridge}</span>
       <span class="temp">${r.temp}°C</span>
-      <span class="badge ${r.ok?'badge-ok':'badge-err'}">${r.ok?'✓ Logged':'✗ Failed'}</span>
+      <span style="font-size:12px;color:var(--gray-400)">${r.date} ${r.time}</span>
     </div>`).join('');
+
   goTo('screen-success');
 }
 
-function logMore() { STATE.photos=[]; STATE.readings=[]; goTo('screen-upload'); refreshUploadScreen(); }
+function downloadCSV() {
+  const logs = getLogs();
+  if (logs.length === 0) return alert('No logs yet!');
+  const header = 'Date,Time,Fridge #,Temperature (°C),Logged By';
+  const rows = logs.map(r => `${r.date},${r.time},${r.fridge},${r.temp},${r.logged_by}`);
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const today = new Date().toISOString().slice(0,10);
+  a.download = `fridge-temps-${today}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderHistory() {
+  const logs = getLogs();
+  const el = document.getElementById('history-content');
+  if (logs.length === 0) {
+    el.innerHTML = '<p style="color:var(--gray-400);font-size:14px;text-align:center;padding:20px">No logs yet.</p>';
+    return;
+  }
+  const rows = [...logs].reverse().slice(0, 50);
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--gray-400);margin-bottom:10px">${logs.length} total entries (showing last ${Math.min(logs.length,50)})</p>
+    <table class="history-table">
+      <thead><tr><th>Date</th><th>Time</th><th>Fridge</th><th>°C</th><th>By</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.time}</td><td>${r.fridge}</td><td><strong>${r.temp}</strong></td><td>${r.logged_by}</td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function clearHistory() {
+  if (!confirm('Delete all saved logs? This cannot be undone.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  renderHistory();
+  document.getElementById('history-btn').style.display = 'none';
+}
+
+function logMore() {
+  STATE.photos=[]; STATE.readings=[];
+  goTo('screen-upload'); refreshUploadScreen();
+}
 
 loadSettings();
 </script>
