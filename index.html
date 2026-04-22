@@ -61,7 +61,6 @@
   .summary-row .fridge-label { font-weight: 600; }
   .summary-row .temp { color: var(--blue); font-weight: 700; font-size: 16px; }
   .success-icon { width: 64px; height: 64px; background: var(--green-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 16px; }
-  .api-key-note { background: var(--orange-light); border: 1px solid #fed7aa; border-radius: 8px; padding: 12px; font-size: 13px; color: var(--orange); line-height: 1.5; }
   .step-indicator { display: flex; gap: 6px; justify-content: center; padding: 4px 0; }
   .step-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gray-200); }
   .step-dot.active { background: var(--blue); width: 18px; border-radius: 3px; }
@@ -72,8 +71,9 @@
   textarea:focus { border-color: var(--blue-mid); }
   .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--gray-200); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .google-config-note { background: var(--blue-light); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--gray-600); line-height: 1.6; }
-  .google-config-note strong { color: var(--blue); }
+  .info-note { background: var(--blue-light); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--gray-600); line-height: 1.6; }
+  .info-note strong { color: var(--blue); }
+  .gemini-badge { display: inline-flex; align-items: center; gap: 6px; background: #e8f5e9; color: #2e7d32; border-radius: 100px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -86,33 +86,46 @@
   </div>
 </header>
 
-<!-- SCREEN 1: Settings -->
+<!-- SCREEN 1: Setup -->
 <div class="screen active" id="screen-setup">
   <div class="step-indicator">
     <div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
   </div>
   <div class="card">
+    <div class="gemini-badge">✦ Powered by Google Gemini — Free</div>
     <div class="card-title">⚙️ App Setup</div>
     <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.5">Configure once — settings are saved on this device.</p>
+
     <div class="config-row">
       <label>Your Name</label>
       <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" />
     </div>
+
     <div class="config-row">
-      <label>Claude API Key</label>
-      <input type="text" id="cfg-claude-key" placeholder="sk-ant-..." />
-      <div class="api-key-note" style="margin-top:6px">Get your key at <strong>console.anthropic.com</strong>. Used to read gauge photos with AI vision.</div>
+      <label>Gemini API Key (Free)</label>
+      <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
+      <div class="info-note" style="margin-top:6px">
+        Get your free key at <strong>aistudio.google.com</strong> → Get API Key. No credit card needed.
+      </div>
     </div>
+
     <div class="config-row">
       <label>Google Sheet ID</label>
       <input type="text" id="cfg-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
-      <div class="google-config-note" style="margin-top:6px">Open your Google Sheet → copy the ID from the URL between /d/ and /edit.<br><strong>Share the sheet with your service account email.</strong></div>
+      <div class="info-note" style="margin-top:6px">
+        Open your Google Sheet → copy the long ID from the URL between <strong>/d/</strong> and <strong>/edit</strong>
+      </div>
     </div>
+
     <div class="config-row">
       <label>Google Service Account JSON</label>
       <textarea id="cfg-sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
-      <div class="google-config-note" style="margin-top:6px">Paste your full service account JSON key file. Download from <strong>Google Cloud Console → IAM → Service Accounts → Keys</strong>.</div>
+      <div class="info-note" style="margin-top:6px">
+        From <strong>Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON</strong>.<br>
+        Share your Sheet with the service account email.
+      </div>
     </div>
+
     <div style="margin-top:16px">
       <button class="btn btn-primary" onclick="saveSetup()">Save & Continue →</button>
     </div>
@@ -125,15 +138,14 @@
     <div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div>
   </div>
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-size:14px;color:var(--gray-600)">Logged in as</span>
       <strong id="display-name" style="font-size:14px"></strong>
     </div>
-    <div style="font-size:12px;color:var(--gray-400)" id="display-date"></div>
-    <div style="margin-top:10px;text-align:right">
-      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-setup')">⚙ Settings</button>
-    </div>
+    <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="display-date"></div>
+    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-setup')">⚙ Settings</button>
   </div>
+
   <div class="card">
     <div class="card-title">📸 Add Gauge Photos</div>
     <div class="upload-zone" onclick="document.getElementById('file-input').click()">
@@ -144,6 +156,7 @@
     <input type="file" id="file-input" accept="image/*" multiple capture="environment" onchange="handleFiles(this.files)" />
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
+
   <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()">Analyse Photos</button>
 </div>
 
@@ -155,7 +168,7 @@
   <div class="card" style="text-align:center;padding:32px 20px">
     <div style="font-size:48px;margin-bottom:16px">🔍</div>
     <div class="card-title" id="processing-title">Analysing photos...</div>
-    <p id="processing-sub" style="color:var(--gray-600);font-size:14px;margin-bottom:16px">Please wait while AI reads the gauges</p>
+    <p style="color:var(--gray-600);font-size:14px;margin-bottom:16px">Gemini AI is reading the gauges</p>
     <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
     <p id="processing-count" style="color:var(--gray-400);font-size:13px;margin-top:8px">0 of 0</p>
   </div>
@@ -187,37 +200,37 @@
 </div>
 
 <script>
-const STATE = { name:'', claudeKey:'', sheetId:'', saJson:null, photos:[], readings:[] };
+const STATE = { name:'', geminiKey:'', sheetId:'', saJson:null, photos:[], readings:[] };
 
 function loadSettings() {
   STATE.name = localStorage.getItem('fridge_name') || '';
-  STATE.claudeKey = localStorage.getItem('fridge_claude_key') || '';
+  STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
   STATE.sheetId = localStorage.getItem('fridge_sheet_id') || '';
   const sa = localStorage.getItem('fridge_sa_json');
   STATE.saJson = sa ? JSON.parse(sa) : null;
   if (STATE.name) document.getElementById('cfg-name').value = STATE.name;
-  if (STATE.claudeKey) document.getElementById('cfg-claude-key').value = STATE.claudeKey;
+  if (STATE.geminiKey) document.getElementById('cfg-gemini-key').value = STATE.geminiKey;
   if (STATE.sheetId) document.getElementById('cfg-sheet-id').value = STATE.sheetId;
   if (STATE.saJson) document.getElementById('cfg-sa-json').value = JSON.stringify(STATE.saJson, null, 2);
-  if (STATE.name && STATE.claudeKey && STATE.sheetId && STATE.saJson) {
+  if (STATE.name && STATE.geminiKey && STATE.sheetId && STATE.saJson) {
     goTo('screen-upload'); refreshUploadScreen();
   }
 }
 
 function saveSetup() {
   const name = document.getElementById('cfg-name').value.trim();
-  const key = document.getElementById('cfg-claude-key').value.trim();
+  const key = document.getElementById('cfg-gemini-key').value.trim();
   const sheet = document.getElementById('cfg-sheet-id').value.trim();
   const saRaw = document.getElementById('cfg-sa-json').value.trim();
   if (!name) return alert('Please enter your name.');
-  if (!key) return alert('Please enter your Claude API key.');
+  if (!key) return alert('Please enter your Gemini API key.');
   if (!sheet) return alert('Please enter the Google Sheet ID.');
   if (!saRaw) return alert('Please paste your Google service account JSON.');
   let saJson;
   try { saJson = JSON.parse(saRaw); } catch(e) { return alert('Service account JSON is invalid. Please check the format.'); }
-  STATE.name = name; STATE.claudeKey = key; STATE.sheetId = sheet; STATE.saJson = saJson;
+  STATE.name = name; STATE.geminiKey = key; STATE.sheetId = sheet; STATE.saJson = saJson;
   localStorage.setItem('fridge_name', name);
-  localStorage.setItem('fridge_claude_key', key);
+  localStorage.setItem('fridge_gemini_key', key);
   localStorage.setItem('fridge_sheet_id', sheet);
   localStorage.setItem('fridge_sa_json', JSON.stringify(saJson));
   goTo('screen-upload'); refreshUploadScreen();
@@ -276,42 +289,49 @@ async function analysePhoto(photo) {
   const mime = photo.file.type || 'image/jpeg';
   const timestamp = new Date().toISOString();
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':STATE.claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body: JSON.stringify({
-        model:'claude-opus-4-5', max_tokens:200,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mime,data:base64}},
-          {type:'text',text:`You are reading a fridge temperature gauge photo from a commercial Kosher kitchen.
-Extract:
-1. Fridge number or ID (look for labels, numbers, stickers on/near the gauge. If unclear, output "?")
-2. Temperature in Celsius ONLY — ignore Fahrenheit even if visible. If unclear, output "?"
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${STATE.geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mime, data: base64 } },
+              { text: `You are reading a fridge temperature gauge photo from a commercial Kosher kitchen in Melbourne, Australia.
 
-Respond ONLY with this exact JSON, no other text:
+Extract:
+1. Fridge number or ID — look for any number, label, or sticker on or near the gauge or fridge door. If unclear output "?"
+2. Temperature in Celsius ONLY — ignore Fahrenheit even if visible on a dual scale. If unclear output "?"
+
+Respond ONLY with this exact JSON, no other text, no markdown:
 {"fridge": "1", "temp": "-2", "confidence": "high"}
 
-confidence = "high" if both values are clearly visible, "low" if either is uncertain.`}
-        ]}]
-      })
-    });
+Use confidence "high" if both values are clearly readable, "low" if either is uncertain or missing.` }
+            ]
+          }],
+          generationConfig: { temperature: 0, maxOutputTokens: 100 }
+        })
+      }
+    );
     const data = await resp.json();
-    const text = data.content?.[0]?.text || '{}';
+    if (data.error) throw new Error(data.error.message);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let parsed;
     try { parsed = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}'); } catch(e) { parsed = {}; }
-    return {photo, fridge:parsed.fridge||'?', temp:parsed.temp||'?', confidence:parsed.confidence||'low', timestamp, error:null};
+    return { photo, fridge: parsed.fridge||'?', temp: parsed.temp||'?', confidence: parsed.confidence||'low', timestamp, error: null };
   } catch(e) {
-    return {photo, fridge:'?', temp:'?', confidence:'low', timestamp, error:e.message};
+    return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error: e.message };
   }
 }
 
 function renderConfirmScreen() {
   document.getElementById('confirm-count').textContent = `${STATE.readings.length} reading${STATE.readings.length!==1?'s':''}`;
   document.getElementById('readings-list').innerHTML = STATE.readings.map((r,i) => {
-    const bc = r.confidence==='high'?'badge-ok':'badge-warn';
-    const bt = r.confidence==='high'?'✓ Clear':'⚠ Check';
-    const dt = new Date(r.timestamp);
-    const dtStr = dt.toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const bc = r.confidence==='high' ? 'badge-ok' : 'badge-warn';
+    const bt = r.confidence==='high' ? '✓ Clear' : '⚠ Check';
+    const dtStr = new Date(r.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const errMsg = r.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px">Error: ${r.error}</div>` : '';
     return `<div class="reading-card">
       <img src="${r.photo.dataUrl}" />
       <div class="fields">
@@ -323,6 +343,7 @@ function renderConfirmScreen() {
           <div class="field-wrap"><label>Fridge #</label><input type="text" value="${r.fridge}" onchange="STATE.readings[${i}].fridge=this.value" placeholder="?" /></div>
           <div class="field-wrap"><label>Temp (°C)</label><input type="number" step="0.1" value="${r.temp}" onchange="STATE.readings[${i}].temp=this.value" placeholder="?" /></div>
         </div>
+        ${errMsg}
       </div>
     </div>`;
   }).join('');
