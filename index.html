@@ -84,6 +84,17 @@
   .history-table td { padding: 8px; border-bottom: 1px solid var(--gray-100); }
   .history-table tr:last-child td { border-bottom: none; }
   .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-400); margin: 16px 0 8px; }
+
+  /* Fullscreen photo modal */
+  .photo-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  .photo-modal.open { display: flex; }
+  .photo-modal img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+  .photo-modal .close-btn { margin-top: 16px; padding: 12px 32px; background: white; color: var(--gray-800); border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .photo-modal .hint { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 10px; }
+  .reading-thumb-wrap { position: relative; width: 90px; height: 90px; flex-shrink: 0; cursor: pointer; border-radius: 8px; overflow: hidden; background: #000; border: 2px solid transparent; transition: border-color 0.15s; }
+  .reading-thumb-wrap:active { border-color: var(--blue-mid); }
+  .reading-thumb-wrap canvas { width: 100%; height: 100%; display: block; }
+  .reading-thumb-wrap .zoom-hint { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 9px; text-align: center; padding: 3px; letter-spacing: 0.02em; }
 </style>
 </head>
 <body>
@@ -102,34 +113,20 @@
     <div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
   </div>
   <div class="card">
-    <div class="card-title">⚙️ App Setup</div>
-    <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.5">Configure once — saved on this device. Add both AI keys for automatic fallback.</p>
-
+    <div style="text-align:center;font-size:40px;margin-bottom:12px">🧊</div>
+    <div class="card-title" style="text-align:center">Fridge Temp Logger</div>
+    <p style="font-size:13px;color:var(--gray-600);margin-bottom:20px;text-align:center;line-height:1.5">Kosher Meals On Wheels Victoria</p>
+    <div class="config-row" id="password-row">
+      <label>Access Password</label>
+      <input type="password" id="cfg-password" placeholder="Enter password" onkeydown="if(event.key==='Enter')saveSetup()" />
+      <div id="password-error" style="color:var(--red);font-size:12px;margin-top:4px;display:none">Incorrect password. Please try again.</div>
+    </div>
     <div class="config-row">
       <label>Your Name</label>
-      <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" />
+      <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" onkeydown="if(event.key==='Enter')saveSetup()" />
     </div>
-
-    <div class="section-label">🤖 AI Keys — Primary</div>
-    <div class="config-row">
-      <label>Gemini API Key <span style="color:var(--green);font-size:11px">(free — recommended)</span></label>
-      <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
-      <div class="info-note" style="margin-top:6px">
-        Get free key at <strong>aistudio.google.com</strong> → Get API Key
-      </div>
-    </div>
-
-    <div class="section-label">🔁 AI Keys — Backup</div>
-    <div class="config-row">
-      <label>Groq API Key <span style="color:var(--orange);font-size:11px">(free backup — no credit card)</span></label>
-      <input type="text" id="cfg-groq-key" placeholder="gsk_..." />
-      <div class="info-note-orange" style="margin-top:6px">
-        Get free key at <strong>console.groq.com</strong> → API Keys → Create. Used automatically if Gemini fails.
-      </div>
-    </div>
-
     <div style="margin-top:16px">
-      <button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button>
+      <button class="btn btn-primary" onclick="saveSetup()">Start →</button>
     </div>
   </div>
 </div>
@@ -147,7 +144,7 @@
     </div>
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="display-date"></div>
     <div id="ai-status-bar"></div>
-    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;margin-top:8px" onclick="goTo('screen-setup')">⚙ Settings</button>
+    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;margin-top:8px" onclick="changeName()">✏ Change Name</button>
   </div>
 
   <div class="card">
@@ -223,27 +220,36 @@ const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[] };
 const STORAGE_KEY = 'fridge_logs';
 
 function loadSettings() {
-  STATE.name = localStorage.getItem('fridge_name') || '';
-  STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
-  STATE.groqKey = localStorage.getItem('fridge_groq_key') || '';
-  if (STATE.name) document.getElementById('cfg-name').value = STATE.name;
-  if (STATE.geminiKey) document.getElementById('cfg-gemini-key').value = STATE.geminiKey;
-  if (STATE.groqKey) document.getElementById('cfg-groq-key').value = STATE.groqKey;
-  if (STATE.name && (STATE.geminiKey || STATE.groqKey)) {
+  STATE.geminiKey = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
+  STATE.groqKey = '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';
+  const unlocked = localStorage.getItem('fridge_unlocked');
+  const name = localStorage.getItem('fridge_name') || '';
+  if (unlocked && name) {
+    STATE.name = name;
+    if (document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
     goTo('screen-upload'); refreshUploadScreen();
+  } else {
+    if (name && document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
   }
 }
 
 function saveSetup() {
+  const password = document.getElementById('cfg-password').value.trim();
   const name = document.getElementById('cfg-name').value.trim();
-  const gemini = document.getElementById('cfg-gemini-key').value.trim();
-  const groq = document.getElementById('cfg-groq-key').value.trim();
-  if (!name) return alert('Please enter your name.');
-  if (!gemini && !groq) return alert('Please enter at least one API key — Gemini or Groq.');
-  STATE.name = name; STATE.geminiKey = gemini; STATE.groqKey = groq;
+  const errEl = document.getElementById('password-error');
+  if (password !== '1006') {
+    errEl.style.display = 'block';
+    document.getElementById('cfg-password').value = '';
+    document.getElementById('cfg-password').focus();
+    return;
+  }
+  errEl.style.display = 'none';
+  if (!name) { alert('Please enter your name.'); return; }
+  STATE.name = name;
+  STATE.geminiKey = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
+  STATE.groqKey = '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';
   localStorage.setItem('fridge_name', name);
-  localStorage.setItem('fridge_gemini_key', gemini);
-  localStorage.setItem('fridge_groq_key', groq);
+  localStorage.setItem('fridge_unlocked', '1');
   goTo('screen-upload'); refreshUploadScreen();
 }
 
@@ -410,7 +416,10 @@ function renderConfirmScreen() {
     const dtStr = new Date(r.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const errMsg = r.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px">⚠ ${r.error}</div>` : '';
     return `<div class="reading-card">
-      <img src="${r.photo.dataUrl}" />
+      <div class="reading-thumb-wrap" onclick="openModal(STATE.readings[${i}].photo.dataUrl)" id="thumb-wrap-${i}">
+        <canvas id="thumb-canvas-${i}" width="90" height="90"></canvas>
+        <div class="zoom-hint">🔍 tap to enlarge</div>
+      </div>
       <div class="fields">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <span class="badge ${bc}">${bt}</span>
@@ -424,6 +433,50 @@ function renderConfirmScreen() {
       </div>
     </div>`;
   }).join('');
+  // Draw zoomed thumbnails after DOM is ready
+  setTimeout(() => {
+    STATE.readings.forEach((r, i) => {
+      drawZoomedThumb('thumb-canvas-' + i, r.photo.dataUrl);
+    });
+  }, 50);
+}
+
+
+function changeName() {
+  const name = prompt('Enter your name:', STATE.name || '');
+  if (name && name.trim()) {
+    STATE.name = name.trim();
+    localStorage.setItem('fridge_name', STATE.name);
+    refreshUploadScreen();
+  }
+}
+
+function openModal(dataUrl) {
+  document.getElementById('modal-img').src = dataUrl;
+  document.getElementById('photo-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('photo-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function drawZoomedThumb(canvasId, dataUrl) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = function() {
+    const cw = 90, ch = 90;
+    // Focus on centre-bottom 50% of image (where gauges usually are)
+    const srcX = img.width * 0.1;
+    const srcY = img.height * 0.35;
+    const srcW = img.width * 0.8;
+    const srcH = img.height * 0.6;
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, cw, ch);
+  };
+  img.src = dataUrl;
 }
 
 function getLogs() {
@@ -498,5 +551,12 @@ function logMore() { STATE.photos=[]; STATE.readings=[]; goTo('screen-upload'); 
 
 loadSettings();
 </script>
+
+<!-- Fullscreen photo modal -->
+<div class="photo-modal" id="photo-modal" onclick="closeModal()">
+  <img id="modal-img" src="" alt="Gauge photo" />
+  <button class="close-btn" onclick="closeModal()">✕ Close</button>
+  <p class="hint">Tap anywhere to close</p>
+</div>
 </body>
 </html>
