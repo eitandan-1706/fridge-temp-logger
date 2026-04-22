@@ -95,6 +95,12 @@
   .reading-thumb-wrap:active { border-color: var(--blue-mid); }
   .reading-thumb-wrap canvas { width: 100%; height: 100%; display: block; }
   .reading-thumb-wrap .zoom-hint { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 9px; text-align: center; padding: 3px; letter-spacing: 0.02em; }
+
+  .photo-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 18px 10px; background: var(--gray-50); border: 2px dashed var(--gray-200); border-radius: var(--radius); cursor: pointer; transition: background 0.15s, border-color 0.15s; -webkit-tap-highlight-color: transparent; }
+  .photo-btn:active { background: var(--blue-light); border-color: var(--blue-mid); }
+  .photo-btn-icon { font-size: 28px; line-height: 1; }
+  .photo-btn-label { font-size: 14px; font-weight: 600; color: var(--gray-800); }
+  .photo-btn-sub { font-size: 11px; color: var(--gray-400); }
 </style>
 </head>
 <body>
@@ -149,12 +155,20 @@
 
   <div class="card">
     <div class="card-title">📸 Add Gauge Photos</div>
-    <div class="upload-zone" onclick="document.getElementById('file-input').click()">
-      <div class="icon">📷</div>
-      <p><strong>Tap to take a photo</strong> or select from gallery</p>
-      <p style="margin-top:4px;font-size:12px">Multiple photos supported</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px">
+      <button class="photo-btn" onclick="document.getElementById('camera-input').click()">
+        <span class="photo-btn-icon">📷</span>
+        <span class="photo-btn-label">Take Photo</span>
+        <span class="photo-btn-sub">Use camera</span>
+      </button>
+      <button class="photo-btn" onclick="document.getElementById('file-input').click()">
+        <span class="photo-btn-icon">🖼️</span>
+        <span class="photo-btn-label">Upload Files</span>
+        <span class="photo-btn-sub">From gallery</span>
+      </button>
     </div>
-    <input type="file" id="file-input" accept="image/*" multiple capture="environment" onchange="handleFiles(this.files)" />
+    <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleFiles(this.files)" style="display:none" />
+    <input type="file" id="file-input" accept="image/*" multiple onchange="handleFiles(this.files)" style="display:none" />
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
 
@@ -196,9 +210,12 @@
     <div class="success-icon">✓</div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Saved!</h2>
     <p id="success-msg" style="color:var(--gray-600);font-size:14px;line-height:1.6;margin-bottom:20px"></p>
+    <div id="sheets-status" style="display:none;margin-bottom:16px;padding:12px;border-radius:10px;font-size:13px;text-align:left"></div>
     <div id="success-summary" style="text-align:left;margin-bottom:20px"></div>
+    <button class="btn btn-success" onclick="updateSheets()" id="sheets-btn" style="margin-bottom:10px">📊 Update Google Sheets</button>
+    <button class="btn btn-primary" onclick="shareCSV()" style="margin-bottom:10px">📤 Share CSV</button>
     <button class="btn btn-download" onclick="downloadCSV()" style="margin-bottom:10px">⬇ Download CSV</button>
-    <button class="btn btn-primary" onclick="logMore()">📸 Log More Readings</button>
+    <button class="btn btn-secondary" onclick="logMore()">📸 Log More Readings</button>
   </div>
 </div>
 
@@ -211,6 +228,8 @@
   <div class="card">
     <div id="history-content"></div>
   </div>
+  <button class="btn btn-success" onclick="updateSheets()">📊 Update Google Sheets</button>
+  <button class="btn btn-primary" onclick="shareCSV()">📤 Share CSV</button>
   <button class="btn btn-download" onclick="downloadCSV()">⬇ Download CSV</button>
   <button class="btn btn-secondary" onclick="clearHistory()">🗑 Clear All Logs</button>
 </div>
@@ -218,6 +237,146 @@
 <script>
 const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[] };
 const STORAGE_KEY = 'fridge_logs';
+const SHEET_ID = '1-7M2YQeGRLiE4TeHe9qPDam145oAHWman1kIKdMp5pI';
+const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
+
+
+async function shareCSV() {
+  const logs = getLogs();
+  if (logs.length === 0) return alert('No logs to share yet!');
+  const header = 'Date,Time,Fridge #,Temperature (°C),Logged By';
+  const rows = logs.map(r => `${r.date},${r.time},${r.fridge},${r.temp},${r.logged_by}`);
+  const csv = [header, ...rows].join('\n');
+  const fileName = `fridge-temps-${new Date().toISOString().slice(0,10)}.csv`;
+
+  if (navigator.share) {
+    try {
+      const file = new File([csv], fileName, {type: 'text/csv'});
+      await navigator.share({ title: 'Fridge Temperature Log', files: [file] });
+      return;
+    } catch(e) {
+      if (e.name !== 'AbortError') console.warn('Share failed, falling back to download', e);
+    }
+  }
+  // Fallback: download
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function updateSheets() {
+  const btn = document.getElementById('sheets-btn');
+  const statusEl = document.getElementById('sheets-status');
+  const logs = getLogs();
+  if (logs.length === 0) return alert('No logs to upload yet!');
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
+  if (statusEl) { statusEl.style.display = 'block'; statusEl.style.background = '#e8f0fe'; statusEl.style.color = '#1a56db'; statusEl.textContent = 'Connecting to Google Sheets...'; }
+
+  try {
+    // Group logs by fridge
+    const byFridge = {};
+    logs.forEach(r => {
+      const key = `Fridge ${r.fridge}`;
+      if (!byFridge[key]) byFridge[key] = [];
+      byFridge[key].push(r);
+    });
+
+    // Get existing sheet info
+    const infoResp = await fetch(`${SHEETS_API}/${SHEET_ID}?fields=sheets.properties`);
+    if (!infoResp.ok) throw new Error('Cannot access Google Sheet. Make sure it is publicly editable.');
+    const info = await infoResp.json();
+    const existingSheets = (info.sheets || []).map(s => s.properties.title);
+
+    let requests = [];
+    let successCount = 0;
+
+    for (const [fridgeName, readings] of Object.entries(byFridge)) {
+      if (statusEl) statusEl.textContent = `Updating ${fridgeName}...`;
+
+      // Create tab if it doesn't exist
+      if (!existingSheets.includes(fridgeName)) {
+        const createResp = await fetch(`${SHEETS_API}/${SHEET_ID}:batchUpdate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: fridgeName } } }] })
+        });
+        if (!createResp.ok) throw new Error(`Failed to create tab for ${fridgeName}`);
+        existingSheets.push(fridgeName);
+
+        // Add header row to new tab
+        const headerRow = [['📅 Date', '🕐 Time', '🌡 Temperature (°C)', '👤 Logged By', '✅ Status']];
+        await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(fridgeName + '!A1')}:append?valueInputOption=USER_ENTERED`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: headerRow })
+        });
+      }
+
+      // Read current data to find where to insert (after header)
+      const readResp = await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(fridgeName + '!A:E')}`);
+      const readData = await readResp.json();
+      const currentRows = (readData.values || []).length;
+
+      // If only header or empty, insert after row 1; else insert at row 2
+      const insertAfterRow = currentRows >= 1 ? 1 : 0;
+
+      // Prepare new rows — newest on top (reverse so most recent first)
+      const newRows = [...readings].reverse().map(r => [
+        r.date, r.time, r.temp, r.logged_by, '✓ Logged'
+      ]);
+
+      // Get sheet ID number for batchUpdate insert
+      const sheetInfoResp = await fetch(`${SHEETS_API}/${SHEET_ID}?fields=sheets.properties`);
+      const sheetInfo = await sheetInfoResp.json();
+      const sheetObj = sheetInfo.sheets.find(s => s.properties.title === fridgeName);
+      if (!sheetObj) throw new Error(`Sheet tab not found: ${fridgeName}`);
+      const sheetGid = sheetObj.properties.sheetId;
+
+      // Insert blank rows at position 2 (after header) to push data down
+      await fetch(`${SHEETS_API}/${SHEET_ID}:batchUpdate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            insertDimension: {
+              range: { sheetId: sheetGid, dimension: 'ROWS', startIndex: insertAfterRow, endIndex: insertAfterRow + newRows.length },
+              inheritFromBefore: false
+            }
+          }]
+        })
+      });
+
+      // Write new rows into the inserted space
+      const range = `${fridgeName}!A${insertAfterRow + 1}`;
+      await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: newRows })
+      });
+
+      successCount += readings.length;
+    }
+
+    if (statusEl) {
+      statusEl.style.background = '#dcfce7';
+      statusEl.style.color = '#16a34a';
+      statusEl.textContent = `✓ ${successCount} reading${successCount!==1?'s':''} updated across ${Object.keys(byFridge).length} fridge tab${Object.keys(byFridge).length!==1?'s':''}!`;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
+
+  } catch(e) {
+    console.error(e);
+    if (statusEl) {
+      statusEl.style.background = '#fef2f2';
+      statusEl.style.color = '#dc2626';
+      statusEl.textContent = '✗ Error: ' + e.message;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
+  }
+}
 
 function loadSettings() {
   STATE.geminiKey = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
