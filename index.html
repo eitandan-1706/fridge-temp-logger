@@ -213,6 +213,7 @@
     <div id="sheets-status" style="display:none;margin-bottom:16px;padding:12px;border-radius:10px;font-size:13px;text-align:left"></div>
     <div id="success-summary" style="text-align:left;margin-bottom:20px"></div>
     <button class="btn btn-success" onclick="updateSheets()" id="sheets-btn" style="margin-bottom:10px">📊 Update Google Sheets</button>
+    <button class="btn btn-primary" id="new-session-btn" onclick="newSession()" style="margin-bottom:10px;display:none">🆕 Start New Session</button>
     <button class="btn btn-primary" onclick="shareCSV()" style="margin-bottom:10px">📤 Share CSV</button>
     <button class="btn btn-download" onclick="downloadCSV()" style="margin-bottom:10px">⬇ Download CSV</button>
     <button class="btn btn-secondary" onclick="logMore()">📸 Log More Readings</button>
@@ -330,9 +331,16 @@ async function updateSheets() {
       doneCount++;
     }
 
-    setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + '!');
+    // Clear local logs after successful upload
+    saveLogs([]);
+    document.getElementById('history-btn') && (document.getElementById('history-btn').style.display = 'none');
+
+    setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + ' — local logs cleared.');
     if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
-    if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
+    if (btn) { btn.disabled = true; btn.textContent = '✓ Done'; }
+    // Show new session button
+    const newSessionBtn = document.getElementById('new-session-btn');
+    if (newSessionBtn) newSessionBtn.style.display = 'block';
 
   } catch(e) {
     console.error('Sheets error:', e);
@@ -671,6 +679,20 @@ function clearHistory() {
   localStorage.removeItem(STORAGE_KEY);
   renderHistory();
   document.getElementById('history-btn').style.display = 'none';
+}
+
+function newSession() {
+  STATE.photos = [];
+  STATE.readings = [];
+  // Reset success screen buttons
+  const sheetsBtn = document.getElementById('sheets-btn');
+  if (sheetsBtn) { sheetsBtn.disabled = false; sheetsBtn.textContent = '📊 Update Google Sheets'; }
+  const newSessionBtn = document.getElementById('new-session-btn');
+  if (newSessionBtn) newSessionBtn.style.display = 'none';
+  const statusEl = document.getElementById('sheets-status');
+  if (statusEl) statusEl.style.display = 'none';
+  goTo('screen-upload');
+  refreshUploadScreen();
 }
 
 function logMore() { STATE.photos=[]; STATE.readings=[]; goTo('screen-upload'); refreshUploadScreen(); }
