@@ -11,6 +11,7 @@
     --green: #16a34a; --green-light: #dcfce7;
     --orange: #ea580c; --orange-light: #fff7ed;
     --red: #dc2626; --red-light: #fef2f2;
+    --purple: #7c3aed; --purple-light: #f3e8ff;
     --gray-50: #f8fafc; --gray-100: #f1f5f9; --gray-200: #e2e8f0;
     --gray-400: #94a3b8; --gray-600: #475569; --gray-800: #1e293b;
     --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
@@ -33,7 +34,7 @@
   .btn-primary:disabled { background: var(--gray-400); cursor: not-allowed; }
   .btn-secondary { background: var(--gray-100); color: var(--gray-800); }
   .btn-success { background: var(--green); color: white; }
-  .btn-download { background: #7c3aed; color: white; }
+  .btn-download { background: var(--purple); color: white; }
   .upload-zone { border: 2px dashed var(--gray-200); border-radius: var(--radius); padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   .upload-zone:hover { border-color: var(--blue-mid); background: var(--blue-light); }
   .upload-zone .icon { font-size: 36px; margin-bottom: 10px; }
@@ -57,6 +58,7 @@
   .badge-ok { background: var(--green-light); color: var(--green); }
   .badge-warn { background: var(--orange-light); color: var(--orange); }
   .badge-err { background: var(--red-light); color: var(--red); }
+  .badge-groq { background: #fef3c7; color: #92400e; }
   .summary-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--gray-100); font-size: 14px; }
   .summary-row:last-child { border-bottom: none; }
   .summary-row .fridge-label { font-weight: 600; }
@@ -71,12 +73,17 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .info-note { background: var(--blue-light); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--gray-600); line-height: 1.6; }
   .info-note strong { color: var(--blue); }
-  .gemini-badge { display: inline-flex; align-items: center; gap: 6px; background: #e8f5e9; color: #2e7d32; border-radius: 100px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
-  .csv-badge { display: inline-flex; align-items: center; gap: 6px; background: #f3e8ff; color: #7c3aed; border-radius: 100px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .info-note-orange { background: var(--orange-light); border-radius: 8px; padding: 12px; font-size: 12px; color: #92400e; line-height: 1.6; }
+  .info-note-orange strong { color: var(--orange); }
+  .ai-status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .ai-status.gemini { background: #e8f5e9; color: #2e7d32; }
+  .ai-status.groq { background: #fef3c7; color: #92400e; }
+  .ai-status.none { background: var(--red-light); color: var(--red); }
   .history-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
   .history-table th { text-align: left; padding: 6px 8px; color: var(--gray-400); font-weight: 500; border-bottom: 1px solid var(--gray-100); }
   .history-table td { padding: 8px; border-bottom: 1px solid var(--gray-100); }
   .history-table tr:last-child td { border-bottom: none; }
+  .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-400); margin: 16px 0 8px; }
 </style>
 </head>
 <body>
@@ -95,21 +102,32 @@
     <div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
   </div>
   <div class="card">
-    <div class="gemini-badge">✦ Powered by Google Gemini — Free</div>
-    <div class="csv-badge">📄 Saves to CSV — no Google account needed</div>
     <div class="card-title">⚙️ App Setup</div>
-    <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.5">Configure once — settings are saved on this device.</p>
+    <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.5">Configure once — saved on this device. Add both AI keys for automatic fallback.</p>
+
     <div class="config-row">
       <label>Your Name</label>
       <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" />
     </div>
+
+    <div class="section-label">🤖 AI Keys — Primary</div>
     <div class="config-row">
-      <label>Gemini API Key (Free)</label>
+      <label>Gemini API Key <span style="color:var(--green);font-size:11px">(free — recommended)</span></label>
       <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
       <div class="info-note" style="margin-top:6px">
-        Get your free key at <strong>aistudio.google.com</strong> → Get API Key. No credit card needed.
+        Get free key at <strong>aistudio.google.com</strong> → Get API Key
       </div>
     </div>
+
+    <div class="section-label">🔁 AI Keys — Backup</div>
+    <div class="config-row">
+      <label>Groq API Key <span style="color:var(--orange);font-size:11px">(free backup — no credit card)</span></label>
+      <input type="text" id="cfg-groq-key" placeholder="gsk_..." />
+      <div class="info-note-orange" style="margin-top:6px">
+        Get free key at <strong>console.groq.com</strong> → API Keys → Create. Used automatically if Gemini fails.
+      </div>
+    </div>
+
     <div style="margin-top:16px">
       <button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button>
     </div>
@@ -121,14 +139,17 @@
   <div class="step-indicator">
     <div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div>
   </div>
+
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-size:14px;color:var(--gray-600)">Logged in as</span>
       <strong id="display-name" style="font-size:14px"></strong>
     </div>
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="display-date"></div>
-    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-setup')">⚙ Settings</button>
+    <div id="ai-status-bar"></div>
+    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;margin-top:8px" onclick="goTo('screen-setup')">⚙ Settings</button>
   </div>
+
   <div class="card">
     <div class="card-title">📸 Add Gauge Photos</div>
     <div class="upload-zone" onclick="document.getElementById('file-input').click()">
@@ -139,8 +160,9 @@
     <input type="file" id="file-input" accept="image/*" multiple capture="environment" onchange="handleFiles(this.files)" />
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
+
   <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()">Analyse Photos</button>
-  <button class="btn btn-secondary" onclick="goTo('screen-history')" id="history-btn" style="display:none">📄 View / Download Previous Logs</button>
+  <button class="btn btn-secondary" id="history-btn" onclick="goTo('screen-history')" style="display:none">📄 View / Download Previous Logs</button>
 </div>
 
 <!-- SCREEN 3: Processing -->
@@ -151,7 +173,7 @@
   <div class="card" style="text-align:center;padding:32px 20px">
     <div style="font-size:48px;margin-bottom:16px">🔍</div>
     <div class="card-title" id="processing-title">Analysing photos...</div>
-    <p style="color:var(--gray-600);font-size:14px;margin-bottom:16px">Gemini AI is reading the gauges</p>
+    <p id="processing-ai" style="color:var(--gray-600);font-size:14px;margin-bottom:16px"></p>
     <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
     <p id="processing-count" style="color:var(--gray-400);font-size:13px;margin-top:8px">0 of 0</p>
   </div>
@@ -197,33 +219,47 @@
 </div>
 
 <script>
-const STATE = { name:'', geminiKey:'', photos:[], readings:[] };
+const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[] };
 const STORAGE_KEY = 'fridge_logs';
 
 function loadSettings() {
   STATE.name = localStorage.getItem('fridge_name') || '';
   STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
+  STATE.groqKey = localStorage.getItem('fridge_groq_key') || '';
   if (STATE.name) document.getElementById('cfg-name').value = STATE.name;
   if (STATE.geminiKey) document.getElementById('cfg-gemini-key').value = STATE.geminiKey;
-  if (STATE.name && STATE.geminiKey) {
+  if (STATE.groqKey) document.getElementById('cfg-groq-key').value = STATE.groqKey;
+  if (STATE.name && (STATE.geminiKey || STATE.groqKey)) {
     goTo('screen-upload'); refreshUploadScreen();
   }
 }
 
 function saveSetup() {
   const name = document.getElementById('cfg-name').value.trim();
-  const key = document.getElementById('cfg-gemini-key').value.trim();
+  const gemini = document.getElementById('cfg-gemini-key').value.trim();
+  const groq = document.getElementById('cfg-groq-key').value.trim();
   if (!name) return alert('Please enter your name.');
-  if (!key) return alert('Please enter your Gemini API key.');
-  STATE.name = name; STATE.geminiKey = key;
+  if (!gemini && !groq) return alert('Please enter at least one API key — Gemini or Groq.');
+  STATE.name = name; STATE.geminiKey = gemini; STATE.groqKey = groq;
   localStorage.setItem('fridge_name', name);
-  localStorage.setItem('fridge_gemini_key', key);
+  localStorage.setItem('fridge_gemini_key', gemini);
+  localStorage.setItem('fridge_groq_key', groq);
   goTo('screen-upload'); refreshUploadScreen();
+}
+
+function renderAIStatus() {
+  const bar = document.getElementById('ai-status-bar');
+  const parts = [];
+  if (STATE.geminiKey) parts.push(`<div class="ai-status gemini">✦ Gemini — Primary AI (free)</div>`);
+  if (STATE.groqKey) parts.push(`<div class="ai-status groq">⚡ Groq — Backup AI (free)</div>`);
+  if (!STATE.geminiKey && !STATE.groqKey) parts.push(`<div class="ai-status none">⚠ No AI key configured</div>`);
+  bar.innerHTML = parts.join('');
 }
 
 function refreshUploadScreen() {
   document.getElementById('display-name').textContent = STATE.name;
   document.getElementById('display-date').textContent = new Date().toLocaleDateString('en-AU', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  renderAIStatus();
   STATE.photos = []; renderThumbs();
   const logs = getLogs();
   document.getElementById('history-btn').style.display = logs.length > 0 ? 'block' : 'none';
@@ -263,7 +299,9 @@ async function startProcessing() {
     document.getElementById('processing-title').textContent = `Analysing photo ${i+1} of ${total}...`;
     document.getElementById('processing-count').textContent = `${i} of ${total} done`;
     document.getElementById('progress-bar').style.width = `${Math.round((i/total)*100)}%`;
-    STATE.readings.push(await analysePhoto(STATE.photos[i]));
+    STATE.readings.push(await analysePhotoWithFallback(STATE.photos[i]));
+    // Small delay to avoid rate limits
+    if (i < total-1) await new Promise(r => setTimeout(r, 1000));
   }
   document.getElementById('progress-bar').style.width = '100%';
   document.getElementById('processing-count').textContent = `${total} of ${total} done`;
@@ -272,34 +310,47 @@ async function startProcessing() {
   goTo('screen-confirm');
 }
 
-async function analysePhoto(photo) {
+async function analysePhotoWithFallback(photo) {
+  // Try Gemini first
+  if (STATE.geminiKey) {
+    document.getElementById('processing-ai').textContent = 'Using Gemini AI...';
+    const result = await analyseWithGemini(photo);
+    if (!result.error) return result;
+    console.warn('Gemini failed:', result.error);
+    // Fall through to Groq
+  }
+
+  // Try Groq as backup
+  if (STATE.groqKey) {
+    document.getElementById('processing-ai').textContent = 'Gemini unavailable — switching to Groq backup...';
+    const result = await analyseWithGroq(photo);
+    if (!result.error) return { ...result, usedBackup: true };
+    console.warn('Groq also failed:', result.error);
+    return { ...result, error: 'Both AI services failed. Please enter values manually.' };
+  }
+
+  return { photo, fridge:'?', temp:'?', confidence:'low', timestamp: new Date().toISOString(), error:'No API key available.' };
+}
+
+async function analyseWithGemini(photo) {
   const base64 = photo.dataUrl.split(',')[1];
   const mime = photo.file.type || 'image/jpeg';
   const timestamp = new Date().toISOString();
-  try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${STATE.geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: mime, data: base64 } },
-              { text: `You are reading a fridge temperature gauge photo from a commercial Kosher kitchen in Melbourne, Australia.
-
+  const prompt = `You are reading a fridge temperature gauge photo from a commercial Kosher kitchen in Melbourne, Australia.
 Extract:
 1. Fridge number or ID — look for any number, label, or sticker on or near the gauge or fridge door. If unclear output "?"
 2. Temperature in Celsius ONLY — ignore Fahrenheit even if visible on a dual scale. If unclear output "?"
-
 Respond ONLY with this exact JSON, no other text, no markdown:
 {"fridge": "1", "temp": "-2", "confidence": "high"}
-
-Use confidence "high" if both values are clearly readable, "low" if either is uncertain or missing.` }
-            ]
-          }],
-          generationConfig: { temperature: 0, maxOutputTokens: 100 }
-        })
+Use confidence "high" if both values are clearly readable, "low" if either is uncertain.`;
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${STATE.geminiKey}`,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{ parts:[
+          { inline_data:{ mime_type:mime, data:base64 } },
+          { text: prompt }
+        ]}], generationConfig:{ temperature:0, maxOutputTokens:100 } })
       }
     );
     const data = await resp.json();
@@ -307,17 +358,55 @@ Use confidence "high" if both values are clearly readable, "low" if either is un
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let parsed;
     try { parsed = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}'); } catch(e) { parsed = {}; }
-    return { photo, fridge: parsed.fridge||'?', temp: parsed.temp||'?', confidence: parsed.confidence||'low', timestamp, error: null };
+    return { photo, fridge:parsed.fridge||'?', temp:parsed.temp||'?', confidence:parsed.confidence||'low', timestamp, error:null };
   } catch(e) {
-    return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error: e.message };
+    return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error:e.message };
+  }
+}
+
+async function analyseWithGroq(photo) {
+  const base64 = photo.dataUrl.split(',')[1];
+  const mime = photo.file.type || 'image/jpeg';
+  const timestamp = new Date().toISOString();
+  const prompt = `You are reading a fridge temperature gauge photo from a commercial Kosher kitchen.
+Extract:
+1. Fridge number or ID — look for any number, label, or sticker on or near the gauge or fridge door. If unclear output "?"
+2. Temperature in Celsius ONLY — ignore Fahrenheit. If unclear output "?"
+Respond ONLY with this exact JSON, no other text:
+{"fridge": "1", "temp": "-2", "confidence": "high"}`;
+  try {
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${STATE.groqKey}` },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        max_tokens: 100,
+        temperature: 0,
+        messages:[{
+          role:'user',
+          content:[
+            { type:'image_url', image_url:{ url:`data:${mime};base64,${base64}` } },
+            { type:'text', text: prompt }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    const text = data.choices?.[0]?.message?.content || '{}';
+    let parsed;
+    try { parsed = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}'); } catch(e) { parsed = {}; }
+    return { photo, fridge:parsed.fridge||'?', temp:parsed.temp||'?', confidence:parsed.confidence||'low', timestamp, error:null };
+  } catch(e) {
+    return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error:e.message };
   }
 }
 
 function renderConfirmScreen() {
   document.getElementById('confirm-count').textContent = `${STATE.readings.length} reading${STATE.readings.length!==1?'s':''}`;
   document.getElementById('readings-list').innerHTML = STATE.readings.map((r,i) => {
-    const bc = r.confidence==='high' ? 'badge-ok' : 'badge-warn';
-    const bt = r.confidence==='high' ? '✓ Clear' : '⚠ Check';
+    const bc = r.error ? 'badge-err' : r.usedBackup ? 'badge-groq' : r.confidence==='high' ? 'badge-ok' : 'badge-warn';
+    const bt = r.error ? '✗ Manual entry needed' : r.usedBackup ? '⚡ Via Groq' : r.confidence==='high' ? '✓ Clear' : '⚠ Check';
     const dtStr = new Date(r.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const errMsg = r.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px">⚠ ${r.error}</div>` : '';
     return `<div class="reading-card">
@@ -328,8 +417,8 @@ function renderConfirmScreen() {
           <span style="font-size:11px;color:var(--gray-400)">${dtStr}</span>
         </div>
         <div class="field-row">
-          <div class="field-wrap"><label>Fridge #</label><input type="text" value="${r.fridge}" onchange="STATE.readings[${i}].fridge=this.value" placeholder="?" /></div>
-          <div class="field-wrap"><label>Temp (°C)</label><input type="number" step="0.1" value="${r.temp}" onchange="STATE.readings[${i}].temp=this.value" placeholder="?" /></div>
+          <div class="field-wrap"><label>Fridge #</label><input type="text" value="${r.fridge}" onfocus="if(this.value==='?')this.value=''" oninput="STATE.readings[${i}].fridge=this.value" placeholder="Enter fridge #" /></div>
+          <div class="field-wrap"><label>Temp (°C)</label><input type="number" step="0.1" value="${r.temp==='?'?'':r.temp}" oninput="STATE.readings[${i}].temp=this.value" placeholder="e.g. -2" /></div>
         </div>
         ${errMsg}
       </div>
@@ -337,47 +426,34 @@ function renderConfirmScreen() {
   }).join('');
 }
 
-// ---- CSV / Storage ----
-
 function getLogs() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
 }
-
-function saveLogs(logs) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-}
+function saveLogs(logs) { localStorage.setItem(STORAGE_KEY, JSON.stringify(logs)); }
 
 function submitAll() {
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Saving...';
-
-  const logs = getLogs();
-  const newRows = STATE.readings.map(r => {
-    const dt = new Date(r.timestamp);
-    return {
-      date: dt.toLocaleDateString('en-AU'),
-      time: dt.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'}),
-      fridge: r.fridge,
-      temp: r.temp,
-      logged_by: STATE.name
-    };
-  });
-
-  newRows.forEach(row => logs.push(row));
-  saveLogs(logs);
-
-  // Show success
-  const count = newRows.length;
-  document.getElementById('success-msg').textContent = `${count} reading${count!==1?'s':''} saved by ${STATE.name}. Download the CSV to share or open in Excel.`;
-  document.getElementById('success-summary').innerHTML = newRows.map(r => `
-    <div class="summary-row">
-      <span class="fridge-label">Fridge ${r.fridge}</span>
-      <span class="temp">${r.temp}°C</span>
-      <span style="font-size:12px;color:var(--gray-400)">${r.date} ${r.time}</span>
-    </div>`).join('');
-
-  goTo('screen-success');
+  btn.textContent = 'Saving...';
+  try {
+    const logs = getLogs();
+    const newRows = STATE.readings.map(r => {
+      const dt = new Date(r.timestamp);
+      return { date:dt.toLocaleDateString('en-AU'), time:dt.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}), fridge:r.fridge||'?', temp:r.temp||'?', logged_by:STATE.name };
+    });
+    newRows.forEach(row => logs.push(row));
+    saveLogs(logs);
+    const count = newRows.length;
+    document.getElementById('success-msg').textContent = `${count} reading${count!==1?'s':''} saved by ${STATE.name}. Download the CSV to share or open in Excel.`;
+    document.getElementById('success-summary').innerHTML = newRows.map(r =>
+      `<div class="summary-row"><span class="fridge-label">Fridge ${r.fridge}</span><span class="temp">${r.temp}°C</span><span style="font-size:12px;color:var(--gray-400)">${r.date} ${r.time}</span></div>`
+    ).join('');
+    goTo('screen-success');
+  } catch(e) {
+    alert('Error saving: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm & Save to CSV';
+  }
 }
 
 function downloadCSV() {
@@ -390,8 +466,7 @@ function downloadCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const today = new Date().toISOString().slice(0,10);
-  a.download = `fridge-temps-${today}.csv`;
+  a.download = `fridge-temps-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -403,7 +478,7 @@ function renderHistory() {
     el.innerHTML = '<p style="color:var(--gray-400);font-size:14px;text-align:center;padding:20px">No logs yet.</p>';
     return;
   }
-  const rows = [...logs].reverse().slice(0, 50);
+  const rows = [...logs].reverse().slice(0,50);
   el.innerHTML = `
     <p style="font-size:12px;color:var(--gray-400);margin-bottom:10px">${logs.length} total entries (showing last ${Math.min(logs.length,50)})</p>
     <table class="history-table">
@@ -419,10 +494,7 @@ function clearHistory() {
   document.getElementById('history-btn').style.display = 'none';
 }
 
-function logMore() {
-  STATE.photos=[]; STATE.readings=[];
-  goTo('screen-upload'); refreshUploadScreen();
-}
+function logMore() { STATE.photos=[]; STATE.readings=[]; goTo('screen-upload'); refreshUploadScreen(); }
 
 loadSettings();
 </script>
