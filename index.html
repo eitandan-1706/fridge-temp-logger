@@ -239,6 +239,7 @@ const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[] };
 const STORAGE_KEY = 'fridge_logs';
 const SHEET_ID = '1-7M2YQeGRLiE4TeHe9qPDam145oAHWman1kIKdMp5pI';
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzD5MQh0RPzvEOfKKIAYORcSk6H-5Q2ZtWckTReYD67iyvE9m3RviDn2KKmKg648k8t/exec';
 
 
 async function shareCSV() {
@@ -276,7 +277,7 @@ async function updateSheets() {
   if (statusEl) { statusEl.style.display = 'block'; statusEl.style.background = '#e8f0fe'; statusEl.style.color = '#1a56db'; statusEl.textContent = 'Connecting to Google Sheets...'; }
 
   try {
-    // Group logs by fridge
+    // Group logs by fridge number
     const byFridge = {};
     logs.forEach(r => {
       const key = `Fridge ${r.fridge}`;
@@ -284,78 +285,29 @@ async function updateSheets() {
       byFridge[key].push(r);
     });
 
-    // Get existing sheet info
-    const infoResp = await fetch(`${SHEETS_API}/${SHEET_ID}?fields=sheets.properties`);
-    if (!infoResp.ok) throw new Error('Cannot access Google Sheet. Make sure it is publicly editable.');
-    const info = await infoResp.json();
-    const existingSheets = (info.sheets || []).map(s => s.properties.title);
-
-    let requests = [];
     let successCount = 0;
+    const fridgeCount = Object.keys(byFridge).length;
 
     for (const [fridgeName, readings] of Object.entries(byFridge)) {
       if (statusEl) statusEl.textContent = `Updating ${fridgeName}...`;
 
-      // Create tab if it doesn't exist
-      if (!existingSheets.includes(fridgeName)) {
-        const createResp = await fetch(`${SHEETS_API}/${SHEET_ID}:batchUpdate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: fridgeName } } }] })
-        });
-        if (!createResp.ok) throw new Error(`Failed to create tab for ${fridgeName}`);
-        existingSheets.push(fridgeName);
+      // Send all readings for this fridge in one call
+      const rows = [...readings].reverse().map(r => ({
+        date: r.date,
+        time: r.time,
+        temp: r.temp,
+        loggedBy: r.logged_by
+      }));
 
-        // Add header row to new tab
-        const headerRow = [['📅 Date', '🕐 Time', '🌡 Temperature (°C)', '👤 Logged By', '✅ Status']];
-        await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(fridgeName + '!A1')}:append?valueInputOption=USER_ENTERED`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values: headerRow })
-        });
-      }
-
-      // Read current data to find where to insert (after header)
-      const readResp = await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(fridgeName + '!A:E')}`);
-      const readData = await readResp.json();
-      const currentRows = (readData.values || []).length;
-
-      // If only header or empty, insert after row 1; else insert at row 2
-      const insertAfterRow = currentRows >= 1 ? 1 : 0;
-
-      // Prepare new rows — newest on top (reverse so most recent first)
-      const newRows = [...readings].reverse().map(r => [
-        r.date, r.time, r.temp, r.logged_by, '✓ Logged'
-      ]);
-
-      // Get sheet ID number for batchUpdate insert
-      const sheetInfoResp = await fetch(`${SHEETS_API}/${SHEET_ID}?fields=sheets.properties`);
-      const sheetInfo = await sheetInfoResp.json();
-      const sheetObj = sheetInfo.sheets.find(s => s.properties.title === fridgeName);
-      if (!sheetObj) throw new Error(`Sheet tab not found: ${fridgeName}`);
-      const sheetGid = sheetObj.properties.sheetId;
-
-      // Insert blank rows at position 2 (after header) to push data down
-      await fetch(`${SHEETS_API}/${SHEET_ID}:batchUpdate`, {
+      const resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [{
-            insertDimension: {
-              range: { sheetId: sheetGid, dimension: 'ROWS', startIndex: insertAfterRow, endIndex: insertAfterRow + newRows.length },
-              inheritFromBefore: false
-            }
-          }]
-        })
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ fridge: fridgeName, rows })
       });
 
-      // Write new rows into the inserted space
-      const range = `${fridgeName}!A${insertAfterRow + 1}`;
-      await fetch(`${SHEETS_API}/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: newRows })
-      });
+      if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+      const result = await resp.json();
+      if (result.status !== 'ok') throw new Error(result.error || 'Unknown error from Apps Script');
 
       successCount += readings.length;
     }
@@ -363,7 +315,7 @@ async function updateSheets() {
     if (statusEl) {
       statusEl.style.background = '#dcfce7';
       statusEl.style.color = '#16a34a';
-      statusEl.textContent = `✓ ${successCount} reading${successCount!==1?'s':''} updated across ${Object.keys(byFridge).length} fridge tab${Object.keys(byFridge).length!==1?'s':''}!`;
+      statusEl.textContent = `✓ ${successCount} reading${successCount!==1?'s':''} synced across ${fridgeCount} fridge tab${fridgeCount!==1?'s':''}!`;
     }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
 
@@ -415,8 +367,8 @@ function saveSetup() {
 function renderAIStatus() {
   const bar = document.getElementById('ai-status-bar');
   const parts = [];
-  if (STATE.geminiKey) parts.push(`<div class="ai-status gemini">✦ Gemini — Primary AI (free)</div>`);
-  if (STATE.groqKey) parts.push(`<div class="ai-status groq">⚡ Groq — Backup AI (free)</div>`);
+  if (STATE.groqKey) parts.push(`<div class="ai-status groq">⚡ Groq — Primary AI (free)</div>`);
+  if (STATE.geminiKey) parts.push(`<div class="ai-status gemini">✦ Gemini — Backup AI (free)</div>`);
   if (!STATE.geminiKey && !STATE.groqKey) parts.push(`<div class="ai-status none">⚠ No AI key configured</div>`);
   bar.innerHTML = parts.join('');
 }
@@ -476,21 +428,21 @@ async function startProcessing() {
 }
 
 async function analysePhotoWithFallback(photo) {
-  // Try Gemini first
-  if (STATE.geminiKey) {
-    document.getElementById('processing-ai').textContent = 'Using Gemini AI...';
-    const result = await analyseWithGemini(photo);
+  // Try Groq first (primary)
+  if (STATE.groqKey) {
+    document.getElementById('processing-ai').textContent = 'Using Groq AI...';
+    const result = await analyseWithGroq(photo);
     if (!result.error) return result;
-    console.warn('Gemini failed:', result.error);
-    // Fall through to Groq
+    console.warn('Groq failed:', result.error);
+    // Fall through to Gemini
   }
 
-  // Try Groq as backup
-  if (STATE.groqKey) {
-    document.getElementById('processing-ai').textContent = 'Gemini unavailable — switching to Groq backup...';
-    const result = await analyseWithGroq(photo);
+  // Try Gemini as backup
+  if (STATE.geminiKey) {
+    document.getElementById('processing-ai').textContent = 'Groq unavailable — switching to Gemini backup...';
+    const result = await analyseWithGemini(photo);
     if (!result.error) return { ...result, usedBackup: true };
-    console.warn('Groq also failed:', result.error);
+    console.warn('Gemini also failed:', result.error);
     return { ...result, error: 'Both AI services failed. Please enter values manually.' };
   }
 
