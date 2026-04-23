@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Fridge Temp Logger – Kosher Meals On Wheels Victoria</title>
+<title>KMOW - Fridge Reader</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -107,10 +107,11 @@
 
 <header>
   <div class="logo">🧊</div>
-  <div>
-    <h1>Fridge Temp Logger</h1>
+  <div style="flex:1">
+    <h1>KMOW - Fridge Reader</h1>
     <p>Kosher Meals On Wheels Victoria</p>
   </div>
+  <div style="font-size:11px;opacity:0.6;text-align:right;line-height:1.4">v1.4</div>
 </header>
 
 <!-- SCREEN 1: Setup -->
@@ -236,7 +237,7 @@
 </div>
 
 <script>
-const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[] };
+const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[], processing:false, lastReadings:{} };
 const STORAGE_KEY = 'fridge_logs';
 const SHEET_ID = '1-7M2YQeGRLiE4TeHe9qPDam145oAHWman1kIKdMp5pI';
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -275,6 +276,9 @@ async function updateSheets() {
   if (logs.length === 0) return alert('No logs to upload yet!');
 
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
+  // Request wake lock to keep screen on during upload
+  let wakeLock = null;
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
   if (statusEl) {
     statusEl.style.display = 'block';
     statusEl.style.background = '#e8f0fe';
@@ -338,6 +342,7 @@ async function updateSheets() {
     setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + ' — local logs cleared.');
     if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
     if (btn) { btn.disabled = true; btn.textContent = '✓ Done'; }
+    if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
     // Show new session button
     const newSessionBtn = document.getElementById('new-session-btn');
     if (newSessionBtn) newSessionBtn.style.display = 'block';
@@ -350,6 +355,7 @@ async function updateSheets() {
       statusEl.innerHTML = '✗ Error: ' + e.message;
     }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
+    if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
   }
 }
 
@@ -433,6 +439,8 @@ function renderThumbs() {
 async function startProcessing() {
   if (!STATE.photos.length) return;
   STATE.readings = [];
+  STATE.processing = true;
+  window.onbeforeunload = () => 'Photos are being analysed. If you leave now all progress will be lost. Are you sure?';
   goTo('screen-processing');
   const total = STATE.photos.length;
   for (let i=0; i<total; i++) {
@@ -446,6 +454,8 @@ async function startProcessing() {
   document.getElementById('progress-bar').style.width = '100%';
   document.getElementById('processing-count').textContent = `${total} of ${total} done`;
   await new Promise(r=>setTimeout(r,600));
+  STATE.processing = false;
+  window.onbeforeunload = null;
   renderConfirmScreen();
   goTo('screen-confirm');
 }
@@ -455,7 +465,10 @@ async function analysePhotoWithFallback(photo) {
   if (STATE.groqKey) {
     document.getElementById('processing-ai').textContent = 'Using Groq AI...';
     const result = await analyseWithGroq(photo);
-    if (!result.error) return result;
+    if (!result.error) {
+      if (result.fridge !== '?') STATE.lastReadings[result.fridge] = result.temp;
+      return result;
+    }
     console.warn('Groq failed:', result.error);
     // Fall through to Gemini
   }
@@ -464,9 +477,15 @@ async function analysePhotoWithFallback(photo) {
   if (STATE.geminiKey) {
     document.getElementById('processing-ai').textContent = 'Groq unavailable — switching to Gemini backup...';
     const result = await analyseWithGemini(photo);
-    if (!result.error) return { ...result, usedBackup: true };
+    if (!result.error) {
+      if (result.fridge !== '?') STATE.lastReadings[result.fridge] = result.temp;
+      return { ...result, usedBackup: true };
+    }
     console.warn('Gemini also failed:', result.error);
-    return { ...result, error: 'Both AI services failed. Please enter values manually.' };
+    // Use last known reading for this fridge if available
+    const lastFridge = Object.keys(STATE.lastReadings).slice(-1)[0];
+    const lastTemp = lastFridge ? STATE.lastReadings[lastFridge] : '?';
+    return { ...result, fridge: lastFridge || '?', temp: lastTemp, error: 'AI failed — showing last known reading. Please verify.' };
   }
 
   return { photo, fridge:'?', temp:'?', confidence:'low', timestamp: new Date().toISOString(), error:'No API key available.' };
@@ -498,7 +517,9 @@ Use confidence "high" if both values are clearly readable, "low" if either is un
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let parsed;
     try { parsed = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}'); } catch(e) { parsed = {}; }
-    return { photo, fridge:parsed.fridge||'?', temp:parsed.temp||'?', confidence:parsed.confidence||'low', timestamp, error:null };
+    const rawTemp = parsed.temp || '?';
+    const temp = (rawTemp !== '?' && !isNaN(parseFloat(rawTemp)) && parseFloat(rawTemp) > 0) ? String(-Math.abs(parseFloat(rawTemp))) : rawTemp;
+    return { photo, fridge:parsed.fridge||'?', temp, confidence:parsed.confidence||'low', timestamp, error:null };
   } catch(e) {
     return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error:e.message };
   }
@@ -536,7 +557,9 @@ Respond ONLY with this exact JSON, no other text:
     const text = data.choices?.[0]?.message?.content || '{}';
     let parsed;
     try { parsed = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}'); } catch(e) { parsed = {}; }
-    return { photo, fridge:parsed.fridge||'?', temp:parsed.temp||'?', confidence:parsed.confidence||'low', timestamp, error:null };
+    const rawTempG = parsed.temp || '?';
+    const tempG = (rawTempG !== '?' && !isNaN(parseFloat(rawTempG)) && parseFloat(rawTempG) > 0) ? String(-Math.abs(parseFloat(rawTempG))) : rawTempG;
+    return { photo, fridge:parsed.fridge||'?', temp:tempG, confidence:parsed.confidence||'low', timestamp, error:null };
   } catch(e) {
     return { photo, fridge:'?', temp:'?', confidence:'low', timestamp, error:e.message };
   }
