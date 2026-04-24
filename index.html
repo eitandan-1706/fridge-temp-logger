@@ -387,9 +387,9 @@ async function updateSheets() {
 
     setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + ' — local logs cleared.');
     if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
-    if (btn) { btn.disabled = true; btn.textContent = '✓ Done'; }
     if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
-    // Show new session button
+    // Auto-show new session button and update done button to navigate
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Done — Start New Session'; btn.onclick = newSession; }
     const newSessionBtn = document.getElementById('new-session-btn');
     if (newSessionBtn) newSessionBtn.style.display = 'block';
 
@@ -624,10 +624,12 @@ async function startProcessing() {
     document.getElementById('processing-ai').textContent = 'Connecting to AI...';
     const result = await analysePhotoWithFallback(STATE.photos[i]);
     STATE.readings.push(result);
-    // Delay between photos — longer if we hit a rate limit
     if (i < total-1) {
-      const delay = (result.error && result.error.includes('rate')) ? 4000 : 2000;
-      document.getElementById('processing-ai').textContent = `Waiting ${delay/1000}s before next photo...`;
+      // Every 5 photos wait 2s, otherwise 1s. If rate limit hit wait 4s.
+      const isRateLimit = result.error && (result.error.includes('rate') || result.error.includes('429'));
+      const delay = isRateLimit ? 4000 : ((i + 1) % 5 === 0 ? 2000 : 1000);
+      const msg = isRateLimit ? 'Rate limit hit — waiting 4s...' : ((i+1) % 5 === 0 ? 'Pausing 2s after every 5 photos...' : 'Waiting 1s...');
+      document.getElementById('processing-ai').textContent = msg;
       await new Promise(r => setTimeout(r, delay));
     }
   }
