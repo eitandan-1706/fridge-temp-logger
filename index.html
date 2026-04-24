@@ -259,7 +259,7 @@
     <p id="success-msg" style="color:var(--gray-600);font-size:14px;line-height:1.6;margin-bottom:20px"></p>
     <div id="sheets-status" style="display:none;margin-bottom:16px;padding:12px;border-radius:10px;font-size:13px;text-align:left"></div>
     <div id="success-summary" style="text-align:left;margin-bottom:20px"></div>
-    <button class="btn btn-success" onclick="updateSheets()" id="sheets-btn" style="margin-bottom:10px">📊 Update Google Sheets</button>
+    <button class="btn btn-success" onclick="updateAndShare()" id="sheets-btn" style="margin-bottom:10px">📊 Update Sheets &amp; Share</button>
     <button class="btn btn-primary" id="new-session-btn" onclick="newSession()" style="margin-bottom:10px;display:none">🆕 Start New Session</button>
     <button class="btn btn-primary" onclick="shareCSV()" style="margin-bottom:10px">📤 Share CSV</button>
     <button class="btn btn-download" onclick="downloadCSV()" style="margin-bottom:10px">⬇ Download CSV</button>
@@ -276,7 +276,7 @@
   <div class="card">
     <div id="history-content"></div>
   </div>
-  <button class="btn btn-success" onclick="updateSheets()">📊 Update Google Sheets</button>
+  <button class="btn btn-success" onclick="updateAndShare()">📊 Update Sheets &amp; Share</button>
   <button class="btn btn-primary" onclick="shareCSV()">📤 Share CSV</button>
   <button class="btn btn-download" onclick="downloadCSV()">⬇ Download CSV</button>
   <button class="btn btn-secondary" onclick="clearHistory()">🗑 Clear All Logs</button>
@@ -290,29 +290,68 @@ const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzD5MQh0RPzvEOfKKIAYORcSk6H-5Q2ZtWckTReYD67iyvE9m3RviDn2KKmKg648k8t/exec';
 
 
-async function shareCSV() {
-  const logs = getLogs();
+async function shareCSV(autoTriggered = false) {
+  // Get logs — if cleared after upload, use last session backup
+  let logs = getLogs();
+  if (logs.length === 0 && STATE._lastUploadedLogs) {
+    logs = STATE._lastUploadedLogs;
+  }
   if (logs.length === 0) return alert('No logs to share yet!');
+
   const header = 'Date,Time,Fridge #,Temperature (°C),Logged By';
   const rows = logs.map(r => `${r.date},${r.time},${r.fridge},${r.temp},${r.logged_by}`);
   const csv = [header, ...rows].join('\n');
-  const fileName = `fridge-temps-${new Date().toISOString().slice(0,10)}.csv`;
+  const today = new Date().toISOString().slice(0,10);
+  const fileName = `KMOW-fridge-temps-${today}.csv`;
 
   if (navigator.share) {
     try {
-      const file = new File([csv], fileName, {type: 'text/csv'});
-      await navigator.share({ title: 'Fridge Temperature Log', files: [file] });
+      // Try sharing as file first (works on mobile)
+      if (navigator.canShare && navigator.canShare({ files: [new File([csv], fileName, {type:'text/csv'})] })) {
+        const file = new File([csv], fileName, {type: 'text/csv'});
+        await navigator.share({
+          title: 'KMOW Fridge Temperature Log',
+          text: `Fridge temperature readings — ${today}`,
+          files: [file]
+        });
+        return;
+      }
+      // Fallback share without file
+      await navigator.share({
+        title: 'KMOW Fridge Temperature Log',
+        text: csv
+      });
       return;
     } catch(e) {
-      if (e.name !== 'AbortError') console.warn('Share failed, falling back to download', e);
+      if (e.name === 'AbortError') return; // User cancelled — that's fine
+      console.warn('Share failed, falling back to download', e);
     }
   }
-  // Fallback: download
+
+  // Desktop fallback — download
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fileName; a.click();
   URL.revokeObjectURL(url);
+}
+
+async function updateAndShare() {
+  const logs = getLogs();
+  if (logs.length === 0) return alert('No logs to upload yet!');
+
+  // Save backup before anything else
+  STATE._lastUploadedLogs = [...logs];
+
+  // Run share immediately + sheets update in parallel
+  const [_, sheetsResult] = await Promise.allSettled([
+    shareCSV(true),      // Opens share sheet immediately — user doesn't wait
+    updateSheets()       // Runs in background at the same time
+  ]);
+
+  if (sheetsResult.status === 'rejected') {
+    console.error('Sheets update failed:', sheetsResult.reason);
+  }
 }
 
 async function updateSheets() {
@@ -392,6 +431,7 @@ async function updateSheets() {
     if (btn) { btn.disabled = false; btn.textContent = '✓ Done — Start New Session'; btn.onclick = newSession; }
     const newSessionBtn = document.getElementById('new-session-btn');
     if (newSessionBtn) newSessionBtn.style.display = 'block';
+
 
   } catch(e) {
     console.error('Sheets error:', e);
