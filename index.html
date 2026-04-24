@@ -133,14 +133,17 @@
       <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" onkeydown="if(event.key==='Enter')saveSetup()" />
     </div>
     <div id="api-key-section" style="display:none">
+      <div style="background:#fff3cd;border-radius:8px;padding:10px;font-size:12px;color:#856404;margin-bottom:8px">
+        ⚠ Enter your API keys below. These are saved only on this device.
+      </div>
       <div class="config-row">
         <label>Groq API Key <span style="color:var(--green);font-size:11px">(primary — free)</span></label>
-        <input type="text" id="cfg-groq-key" placeholder="gsk_..." />
+        <input type="text" id="cfg-groq-key" placeholder="gsk_..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         <div class="info-note" style="margin-top:6px">Get free key at <strong>console.groq.com</strong> → API Keys</div>
       </div>
       <div class="config-row">
         <label>Gemini API Key <span style="color:var(--gray-400);font-size:11px">(backup — free)</span></label>
-        <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
+        <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         <div class="info-note" style="margin-top:6px">Get free key at <strong>aistudio.google.com</strong> → Get API Key</div>
       </div>
     </div>
@@ -375,16 +378,24 @@ async function updateSheets() {
 }
 
 function loadSettings() {
-  STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
-  STATE.groqKey = localStorage.getItem('fridge_groq_key') || '';
+  let groqKey = localStorage.getItem('fridge_groq_key') || '';
+  let geminiKey = localStorage.getItem('fridge_gemini_key') || '';
+
+  // Clear old revoked keys automatically
+  const revokedGroq = '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';
+  const revokedGemini = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
+  if (groqKey === revokedGroq) { localStorage.removeItem('fridge_groq_key'); groqKey = ''; }
+  if (geminiKey === revokedGemini) { localStorage.removeItem('fridge_gemini_key'); geminiKey = ''; }
+  if (!groqKey && !geminiKey) { localStorage.removeItem('fridge_unlocked'); }
+
+  STATE.geminiKey = geminiKey;
+  STATE.groqKey = groqKey;
   const unlocked = localStorage.getItem('fridge_unlocked');
   const name = localStorage.getItem('fridge_name') || '';
+  if (name && document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
   if (unlocked && name && (STATE.groqKey || STATE.geminiKey)) {
     STATE.name = name;
-    if (document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
     goTo('screen-upload'); refreshUploadScreen();
-  } else {
-    if (name && document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
   }
 }
 
@@ -659,7 +670,13 @@ function resetAPIKeys() {
   localStorage.removeItem('fridge_unlocked');
   STATE.groqKey = '';
   STATE.geminiKey = '';
+  // Show setup screen with API fields already visible
   goTo('screen-setup');
+  setTimeout(() => {
+    document.getElementById('api-key-section').style.display = 'block';
+    document.getElementById('cfg-groq-key').value = '';
+    document.getElementById('cfg-gemini-key').value = '';
+  }, 100);
 }
 
 function openModal(dataUrl) {
