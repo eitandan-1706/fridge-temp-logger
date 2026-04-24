@@ -132,6 +132,18 @@
       <label>Your Name</label>
       <input type="text" id="cfg-name" placeholder="e.g. Sarah Cohen" onkeydown="if(event.key==='Enter')saveSetup()" />
     </div>
+    <div id="api-key-section" style="display:none">
+      <div class="config-row">
+        <label>Groq API Key <span style="color:var(--green);font-size:11px">(primary — free)</span></label>
+        <input type="text" id="cfg-groq-key" placeholder="gsk_..." />
+        <div class="info-note" style="margin-top:6px">Get free key at <strong>console.groq.com</strong> → API Keys</div>
+      </div>
+      <div class="config-row">
+        <label>Gemini API Key <span style="color:var(--gray-400);font-size:11px">(backup — free)</span></label>
+        <input type="text" id="cfg-gemini-key" placeholder="AIzaSy..." />
+        <div class="info-note" style="margin-top:6px">Get free key at <strong>aistudio.google.com</strong> → Get API Key</div>
+      </div>
+    </div>
     <div style="margin-top:16px">
       <button class="btn btn-primary" onclick="saveSetup()">Start →</button>
     </div>
@@ -151,7 +163,10 @@
     </div>
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="display-date"></div>
     <div id="ai-status-bar"></div>
-    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;margin-top:8px" onclick="changeName()">✏ Change Name</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1;padding:6px 14px;font-size:12px" onclick="changeName()">✏ Change Name</button>
+      <button class="btn btn-secondary" style="flex:1;padding:6px 14px;font-size:12px;color:var(--red)" onclick="resetAPIKeys()">🔑 Reset Keys</button>
+    </div>
   </div>
 
   <div class="card">
@@ -360,11 +375,11 @@ async function updateSheets() {
 }
 
 function loadSettings() {
-  STATE.geminiKey = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
-  STATE.groqKey = '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';
+  STATE.geminiKey = localStorage.getItem('fridge_gemini_key') || '';
+  STATE.groqKey = localStorage.getItem('fridge_groq_key') || '';
   const unlocked = localStorage.getItem('fridge_unlocked');
   const name = localStorage.getItem('fridge_name') || '';
-  if (unlocked && name) {
+  if (unlocked && name && (STATE.groqKey || STATE.geminiKey)) {
     STATE.name = name;
     if (document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
     goTo('screen-upload'); refreshUploadScreen();
@@ -377,6 +392,8 @@ function saveSetup() {
   const password = document.getElementById('cfg-password').value.trim();
   const name = document.getElementById('cfg-name').value.trim();
   const errEl = document.getElementById('password-error');
+
+  // Step 1 — validate password
   if (password !== '1006') {
     errEl.style.display = 'block';
     document.getElementById('cfg-password').value = '';
@@ -384,13 +401,40 @@ function saveSetup() {
     return;
   }
   errEl.style.display = 'none';
+
   if (!name) { alert('Please enter your name.'); return; }
+
+  const savedGroq = localStorage.getItem('fridge_groq_key') || '';
+  const savedGemini = localStorage.getItem('fridge_gemini_key') || '';
+  const apiSection = document.getElementById('api-key-section');
+  const groqKey = document.getElementById('cfg-groq-key').value.trim();
+  const geminiKey = document.getElementById('cfg-gemini-key').value.trim();
+
+  // If no keys saved yet — show key fields first time
+  if (!savedGroq && !savedGemini && apiSection.style.display === 'none') {
+    apiSection.style.display = 'block';
+    document.getElementById('cfg-groq-key').focus();
+    return;
+  }
+
+  // Use typed keys or fall back to saved ones
+  const finalGroq = groqKey || savedGroq;
+  const finalGemini = geminiKey || savedGemini;
+
+  if (!finalGroq && !finalGemini) {
+    alert('Please enter at least one API key — Groq or Gemini.');
+    return;
+  }
+
   STATE.name = name;
-  STATE.geminiKey = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
-  STATE.groqKey = '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';
+  STATE.groqKey = finalGroq;
+  STATE.geminiKey = finalGemini;
   localStorage.setItem('fridge_name', name);
+  localStorage.setItem('fridge_groq_key', finalGroq);
+  localStorage.setItem('fridge_gemini_key', finalGemini);
   localStorage.setItem('fridge_unlocked', '1');
-  goTo('screen-upload'); refreshUploadScreen();
+  goTo('screen-upload');
+  refreshUploadScreen();
 }
 
 function renderAIStatus() {
@@ -606,6 +650,16 @@ function changeName() {
     localStorage.setItem('fridge_name', STATE.name);
     refreshUploadScreen();
   }
+}
+
+function resetAPIKeys() {
+  if (!confirm('Reset API keys? You will need to enter new keys on next login.')) return;
+  localStorage.removeItem('fridge_groq_key');
+  localStorage.removeItem('fridge_gemini_key');
+  localStorage.removeItem('fridge_unlocked');
+  STATE.groqKey = '';
+  STATE.geminiKey = '';
+  goTo('screen-setup');
 }
 
 function openModal(dataUrl) {
