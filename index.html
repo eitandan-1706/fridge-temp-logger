@@ -199,6 +199,8 @@
     <button class="restore-dismiss" onclick="dismissRestore()">×</button>
   </div>
 
+  <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()" style="position:sticky;top:70px;z-index:90;box-shadow:0 2px 8px rgba(26,86,219,0.3)">Analyse Photos</button>
+
   <div class="card">
     <div class="card-title">📸 Add Gauge Photos</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px">
@@ -218,7 +220,6 @@
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
 
-  <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()">Analyse Photos</button>
   <button class="btn btn-secondary" id="history-btn" onclick="goTo('screen-history')" style="display:none">📄 View / Download Previous Logs</button>
 </div>
 
@@ -620,9 +621,15 @@ async function startProcessing() {
     document.getElementById('processing-title').textContent = `Analysing photo ${i+1} of ${total}...`;
     document.getElementById('processing-count').textContent = `${i} of ${total} done`;
     document.getElementById('progress-bar').style.width = `${Math.round((i/total)*100)}%`;
-    STATE.readings.push(await analysePhotoWithFallback(STATE.photos[i]));
-    // Small delay to avoid rate limits
-    if (i < total-1) await new Promise(r => setTimeout(r, 1000));
+    document.getElementById('processing-ai').textContent = 'Connecting to AI...';
+    const result = await analysePhotoWithFallback(STATE.photos[i]);
+    STATE.readings.push(result);
+    // Delay between photos — longer if we hit a rate limit
+    if (i < total-1) {
+      const delay = (result.error && result.error.includes('rate')) ? 4000 : 2000;
+      document.getElementById('processing-ai').textContent = `Waiting ${delay/1000}s before next photo...`;
+      await new Promise(r => setTimeout(r, delay));
+    }
   }
   document.getElementById('progress-bar').style.width = '100%';
   document.getElementById('processing-count').textContent = `${total} of ${total} done`;
@@ -634,12 +641,17 @@ async function startProcessing() {
 }
 
 async function analysePhotoWithFallback(photo) {
+  const timestamp = new Date().toISOString();
+
   // Try Groq first (primary)
   if (STATE.groqKey) {
     document.getElementById('processing-ai').textContent = 'Using Groq AI...';
     const result = await analyseWithGroq(photo);
     if (!result.error) {
-      if (result.fridge !== '?') STATE.lastReadings[result.fridge] = result.temp;
+      // Save last known reading only when BOTH fridge and temp are clear
+      if (result.fridge !== '?' && result.temp !== '?') {
+        STATE.lastReadings[result.fridge] = result.temp;
+      }
       return result;
     }
     console.warn('Groq failed:', result.error);
@@ -651,17 +663,25 @@ async function analysePhotoWithFallback(photo) {
     document.getElementById('processing-ai').textContent = 'Groq unavailable — switching to Gemini backup...';
     const result = await analyseWithGemini(photo);
     if (!result.error) {
-      if (result.fridge !== '?') STATE.lastReadings[result.fridge] = result.temp;
+      // Save last known reading only when BOTH fridge and temp are clear
+      if (result.fridge !== '?' && result.temp !== '?') {
+        STATE.lastReadings[result.fridge] = result.temp;
+      }
       return { ...result, usedBackup: true };
     }
     console.warn('Gemini also failed:', result.error);
-    // Use last known reading for this fridge if available
-    const lastFridge = Object.keys(STATE.lastReadings).slice(-1)[0];
-    const lastTemp = lastFridge ? STATE.lastReadings[lastFridge] : '?';
-    return { ...result, fridge: lastFridge || '?', temp: lastTemp, error: 'AI failed — showing last known reading. Please verify.' };
   }
 
-  return { photo, fridge:'?', temp:'?', confidence:'low', timestamp: new Date().toISOString(), error:'No API key available.' };
+  // Both AI services failed completely — return blank fields, NOT old readings
+  // User must enter manually — don't confuse them with stale data
+  return {
+    photo,
+    fridge: '?',
+    temp: '?',
+    confidence: 'low',
+    timestamp,
+    error: 'AI could not read this photo. Please enter values manually.'
+  };
 }
 
 async function analyseWithGemini(photo) {
@@ -676,16 +696,28 @@ Respond ONLY with this exact JSON, no other text, no markdown:
 {"fridge": "1", "temp": "-2", "confidence": "high"}
 Use confidence "high" if both values are clearly readable, "low" if either is uncertain.`;
   try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${STATE.geminiKey}`,
-      { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ contents:[{ parts:[
-          { inline_data:{ mime_type:mime, data:base64 } },
-          { text: prompt }
-        ]}], generationConfig:{ temperature:0, maxOutputTokens:100 } })
+    // Retry up to 3 times with backoff for rate limit errors
+    let data, lastErrG;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        const wait = attempt * 3000;
+        console.log(`Gemini retry ${attempt} after ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
       }
-    );
-    const data = await resp.json();
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${STATE.geminiKey}`,
+        { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ contents:[{ parts:[
+            { inline_data:{ mime_type:mime, data:base64 } },
+            { text: prompt }
+          ]}], generationConfig:{ temperature:0, maxOutputTokens:100 } })
+        }
+      );
+      data = await resp.json();
+      if (!data.error) break;
+      lastErrG = data.error.message;
+      if (!lastErrG.toLowerCase().includes('quota') && !lastErrG.toLowerCase().includes('rate')) break;
+    }
     if (data.error) throw new Error(data.error.message);
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let parsed;
@@ -709,23 +741,36 @@ Extract:
 Respond ONLY with this exact JSON, no other text:
 {"fridge": "1", "temp": "-2", "confidence": "high"}`;
   try {
-    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${STATE.groqKey}` },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        max_tokens: 100,
-        temperature: 0,
-        messages:[{
-          role:'user',
-          content:[
-            { type:'image_url', image_url:{ url:`data:${mime};base64,${base64}` } },
-            { type:'text', text: prompt }
-          ]
-        }]
-      })
-    });
-    const data = await resp.json();
+    // Retry up to 3 times with backoff for rate limit errors
+    let data, lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        const wait = attempt * 3000;
+        console.log(`Groq retry ${attempt} after ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${STATE.groqKey}` },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          max_tokens: 100,
+          temperature: 0,
+          messages:[{
+            role:'user',
+            content:[
+              { type:'image_url', image_url:{ url:`data:${mime};base64,${base64}` } },
+              { type:'text', text: prompt }
+            ]
+          }]
+        })
+      });
+      data = await resp.json();
+      if (!data.error) break;
+      lastErr = data.error.message || JSON.stringify(data.error);
+      // Only retry on rate limit errors
+      if (!lastErr.toLowerCase().includes('rate') && !lastErr.toLowerCase().includes('429')) break;
+    }
     if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
     const text = data.choices?.[0]?.message?.content || '{}';
     let parsed;
