@@ -122,6 +122,34 @@
   .restore-banner .restore-text { flex:1; font-size:13px; line-height:1.4; }
   .restore-banner .restore-btn { background:white; color:#1a56db; border:none; padding:8px 14px; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer; }
   .restore-banner .restore-dismiss { background:none; border:none; color:rgba(255,255,255,0.6); font-size:18px; cursor:pointer; }
+
+  /* Manual Entry Screen */
+  .manual-screen { display:none; flex-direction:column; flex:1; padding:20px; gap:16px; max-width:480px; margin:0 auto; width:100%; }
+  .manual-screen.active { display:flex; }
+
+  .fridge-selector { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px; }
+  .fridge-btn { padding:14px 8px; background:var(--gray-100); border:2px solid var(--gray-200); border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; -webkit-tap-highlight-color:transparent; }
+  .fridge-btn.selected { background:var(--blue-light); border-color:var(--blue); color:var(--blue); }
+  .fridge-btn:active { transform:scale(0.95); }
+
+  .temp-display { background:var(--gray-50); border:2px solid var(--gray-200); border-radius:12px; padding:16px; text-align:center; font-size:42px; font-weight:700; color:var(--gray-800); letter-spacing:2px; min-height:80px; display:flex; align-items:center; justify-content:center; transition:border-color 0.15s; }
+  .temp-display.has-value { border-color:var(--blue); color:var(--blue); }
+  .temp-display.invalid { border-color:var(--red); color:var(--red); }
+
+  .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .num-btn { padding:18px; background:white; border:1.5px solid var(--gray-200); border-radius:12px; font-size:22px; font-weight:600; cursor:pointer; text-align:center; box-shadow:var(--shadow); -webkit-tap-highlight-color:transparent; transition:all 0.1s; }
+  .num-btn:active { background:var(--blue-light); border-color:var(--blue); transform:scale(0.95); }
+  .num-btn.num-del { background:var(--gray-100); color:var(--red); font-size:20px; }
+  .num-btn.num-dot { color:var(--gray-600); }
+  .num-btn.num-zero { grid-column:span 1; }
+
+  .suggested-temps { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+  .suggested-temp-btn { padding:6px 14px; background:var(--blue-light); border:1.5px solid var(--blue); border-radius:100px; font-size:14px; font-weight:600; color:var(--blue); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .suggested-temp-btn:active { background:var(--blue); color:white; }
+
+  .fridge-custom-input { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .fridge-custom-input input { flex:1; padding:12px; border:1.5px solid var(--gray-200); border-radius:10px; font-size:18px; font-weight:600; text-align:center; outline:none; }
+  .fridge-custom-input input:focus { border-color:var(--blue); }
 </style>
 </head>
 <body>
@@ -132,7 +160,7 @@
     <h1>KMOW - Fridge Reader</h1>
     <p>Kosher Meals On Wheels Victoria</p>
   </div>
-  <div style="font-size:11px;opacity:0.6;text-align:right;line-height:1.4">v2.0</div>
+  <div style="font-size:11px;opacity:0.6;text-align:right;line-height:1.4">v3.0</div>
 </header>
 
 <!-- SCREEN 1: Setup -->
@@ -168,8 +196,9 @@
         <div class="info-note" style="margin-top:6px">Get free key at <strong>aistudio.google.com</strong> → Get API Key</div>
       </div>
     </div>
-    <div style="margin-top:16px">
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
       <button class="btn btn-primary" onclick="saveSetup()">Start →</button>
+      <button class="btn btn-secondary" onclick="skipAPIKeys()" style="font-size:14px">Skip API Keys — Manual Entry Only</button>
     </div>
   </div>
 </div>
@@ -201,7 +230,7 @@
 
   <button class="btn btn-primary" id="process-btn" disabled onclick="startProcessing()" style="position:sticky;top:70px;z-index:90;box-shadow:0 2px 8px rgba(26,86,219,0.3)">Analyse Photos</button>
 
-  <div class="card">
+  <div class="card" id="photo-card">
     <div class="card-title">📸 Add Gauge Photos</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px">
       <button class="photo-btn" onclick="document.getElementById('camera-input').click()">
@@ -220,6 +249,7 @@
     <div id="thumb-grid" class="thumb-grid"></div>
   </div>
 
+  <button class="btn btn-secondary" onclick="openManualEntry()" style="background:var(--gray-100);color:var(--gray-800)">✏️ Enter Manually</button>
   <button class="btn btn-secondary" id="history-btn" onclick="goTo('screen-history')" style="display:none">📄 View / Download Previous Logs</button>
 </div>
 
@@ -283,7 +313,7 @@
 </div>
 
 <script>
-const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[], processing:false, lastReadings:{} };
+const STATE = { name:'', geminiKey:'', groqKey:'', photos:[], readings:[], processing:false, lastReadings:{}, manualOnly:false };
 const STORAGE_KEY = 'fridge_logs';
 const SHEET_ID = '1-7M2YQeGRLiE4TeHe9qPDam145oAHWman1kIKdMp5pI';
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -531,26 +561,258 @@ function dismissRestore() {
   window._pendingSession = null;
 }
 
+
+// ── Manual Entry ─────────────────────────────────────────────────────────
+const FRIDGE_HISTORY_KEY = 'fridge_temp_history';
+const KNOWN_FRIDGES = [1,2,3,4,5,6,7,8,9,10,11,12,13];
+let manualFridge = null;
+let manualTemp = '-';
+
+function getFridgeHistory() {
+  try { return JSON.parse(localStorage.getItem(FRIDGE_HISTORY_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+function saveFridgeHistory(history) {
+  localStorage.setItem(FRIDGE_HISTORY_KEY, JSON.stringify(history));
+}
+
+function recordTempForFridge(fridge, temp) {
+  const history = getFridgeHistory();
+  const key = String(fridge);
+  if (!history[key]) history[key] = [];
+  // Add to front, keep max 10
+  history[key].unshift(temp);
+  if (history[key].length > 10) history[key] = history[key].slice(0, 10);
+  saveFridgeHistory(history);
+}
+
+function getMostFrequentTemp(fridge) {
+  const history = getFridgeHistory();
+  const temps = history[String(fridge)] || [];
+  if (temps.length === 0) return null;
+  // Count frequency, keeping order for tie-breaking (most recent wins)
+  const freq = {};
+  temps.forEach((t, idx) => {
+    if (!freq[t]) freq[t] = { count: 0, firstSeen: idx };
+    freq[t].count++;
+  });
+  // Sort by frequency desc, then by recency (lower index = more recent)
+  const sorted = Object.entries(freq).sort((a, b) => {
+    if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+    return a[1].firstSeen - b[1].firstSeen;
+  });
+  return sorted[0][0];
+}
+
+function getRecentTemps(fridge) {
+  const history = getFridgeHistory();
+  const temps = history[String(fridge)] || [];
+  // Return unique temps preserving order (most recent first)
+  return [...new Set(temps)].slice(0, 5);
+}
+
+function openManualEntry() {
+  manualFridge = null;
+  manualTemp = '-';
+  renderFridgeSelector();
+  updateTempDisplay();
+  document.getElementById('fridge-custom').value = '';
+  document.getElementById('suggested-temps-wrap').style.display = 'none';
+  goTo('screen-manual');
+}
+
+function renderFridgeSelector() {
+  const sel = document.getElementById('fridge-selector');
+  // Show known fridges + any from history
+  const history = getFridgeHistory();
+  const historyFridges = Object.keys(history).map(Number).filter(n => !KNOWN_FRIDGES.includes(n));
+  const allFridges = [...KNOWN_FRIDGES, ...historyFridges].sort((a,b) => a-b);
+  sel.innerHTML = allFridges.map(n => `
+    <button class="fridge-btn ${manualFridge == n ? 'selected' : ''}" onclick="selectFridge(${n})">
+      ${n}
+    </button>`).join('');
+}
+
+function selectFridge(num, fromInput = false) {
+  if (!num || isNaN(num)) return;
+  manualFridge = Number(num);
+
+  // Update selector UI
+  document.querySelectorAll('.fridge-btn').forEach(b => b.classList.remove('selected'));
+  if (!fromInput) {
+    document.getElementById('fridge-custom').value = '';
+  }
+  // Find and highlight the button if it exists
+  document.querySelectorAll('.fridge-btn').forEach(b => {
+    if (parseInt(b.textContent.trim()) === manualFridge) b.classList.add('selected');
+  });
+
+  // Pre-fill most frequent temp
+  const suggested = getMostFrequentTemp(manualFridge);
+  if (suggested) {
+    manualTemp = suggested;
+    updateTempDisplay();
+  } else {
+    manualTemp = '-';
+    updateTempDisplay();
+  }
+
+  // Show recent temps
+  const recents = getRecentTemps(manualFridge);
+  const wrap = document.getElementById('suggested-temps-wrap');
+  const container = document.getElementById('suggested-temps');
+  if (recents.length > 0) {
+    container.innerHTML = recents.map(t =>
+      `<button class="suggested-temp-btn" onclick="useSuggestedTemp('${t}')">${t}°</button>`
+    ).join('');
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+function useSuggestedTemp(temp) {
+  manualTemp = temp;
+  updateTempDisplay();
+}
+
+function numpadPress(digit) {
+  if (manualTemp === '-' && digit === '.') {
+    manualTemp = '-0.';
+  } else if (manualTemp === '-') {
+    manualTemp = '-' + digit;
+  } else {
+    // Prevent multiple dots
+    if (digit === '.' && manualTemp.includes('.')) return;
+    // Max 4 digits total (e.g. -25.5)
+    const digits = manualTemp.replace('-','').replace('.','');
+    if (digits.length >= 4) return;
+    manualTemp += digit;
+  }
+  updateTempDisplay();
+}
+
+function numpadDelete() {
+  if (manualTemp.length <= 1) {
+    manualTemp = '-';
+  } else {
+    manualTemp = manualTemp.slice(0, -1);
+    // If only '-' left after delete
+    if (manualTemp === '') manualTemp = '-';
+  }
+  updateTempDisplay();
+}
+
+function updateTempDisplay() {
+  const el = document.getElementById('temp-display');
+  if (!el) return;
+  el.textContent = manualTemp + (manualTemp !== '-' ? '°' : '');
+  el.className = 'temp-display';
+  if (manualTemp !== '-' && isValidTemp(manualTemp)) el.classList.add('has-value');
+  else if (manualTemp !== '-') el.classList.add('invalid');
+}
+
+function submitManualEntry() {
+  // Validate
+  if (!manualFridge) {
+    alert('Please select or enter a fridge number.');
+    return;
+  }
+  if (!isValidTemp(manualTemp)) {
+    alert('Please enter a valid negative temperature (e.g. -4).');
+    return;
+  }
+
+  // Record in history for future suggestions
+  recordTempForFridge(manualFridge, manualTemp);
+
+  // Create a reading object exactly like the AI produces
+  const timestamp = new Date().toISOString();
+  const reading = {
+    photo: { dataUrl: null },  // No photo for manual entry
+    fridge: String(manualFridge),
+    temp: manualTemp,
+    confidence: 'manual',
+    timestamp,
+    error: null,
+    isManual: true
+  };
+
+  // Add to STATE readings and go to confirm screen
+  STATE.readings = [reading];
+  STATE.photos = [{ dataUrl: null, file: { name: 'manual', type: 'manual' } }];
+  renderManualConfirm(reading);
+  goTo('screen-confirm');
+}
+
+function renderManualConfirm(reading) {
+  document.getElementById('confirm-count').textContent = '1 reading (manual)';
+  const dtStr = new Date(reading.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  document.getElementById('readings-list').innerHTML = `
+    <div class="reading-card">
+      <div style="width:80px;height:80px;border-radius:8px;background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0">✏️</div>
+      <div class="fields">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="badge badge-ok">✓ Manual</span>
+          <span style="font-size:11px;color:var(--gray-400)">${dtStr}</span>
+        </div>
+        <div class="field-row">
+          <div class="field-wrap">
+            <label>Fridge # <span style="color:var(--red)">*</span></label>
+            <input type="text" value="${reading.fridge}"
+              oninput="STATE.readings[0].fridge=this.value;this.style.borderColor=this.value.trim()?'':'var(--red)'"
+              placeholder="Required" />
+          </div>
+          <div class="field-wrap">
+            <label>Temp °C <span style="color:var(--red)">*</span></label>
+            <input type="text" value="${reading.temp}"
+              oninput="enforceMinusPrefix(this,0)"
+              placeholder="-0.0"
+              style="font-weight:600;font-size:15px" />
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function loadSettings() {
   let groqKey = localStorage.getItem('fridge_groq_key') || '';
   let geminiKey = localStorage.getItem('fridge_gemini_key') || '';
+  const manualOnly = localStorage.getItem('fridge_manual_only') === '1';
 
   // Clear old revoked keys automatically
   const revokedGroq = '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';
   const revokedGemini = 'AIzaSyBSXX-qVAA495pyLp3dhM0ykzpwmdmgzwU';
   if (groqKey === revokedGroq) { localStorage.removeItem('fridge_groq_key'); groqKey = ''; }
   if (geminiKey === revokedGemini) { localStorage.removeItem('fridge_gemini_key'); geminiKey = ''; }
-  if (!groqKey && !geminiKey) { localStorage.removeItem('fridge_unlocked'); }
+  if (!groqKey && !geminiKey && !manualOnly) { localStorage.removeItem('fridge_unlocked'); }
 
   STATE.geminiKey = geminiKey;
   STATE.groqKey = groqKey;
+  STATE.manualOnly = manualOnly;
   const unlocked = localStorage.getItem('fridge_unlocked');
   const name = localStorage.getItem('fridge_name') || '';
   if (name && document.getElementById('cfg-name')) document.getElementById('cfg-name').value = name;
-  if (unlocked && name && (STATE.groqKey || STATE.geminiKey)) {
+  if (unlocked && name && (STATE.groqKey || STATE.geminiKey || manualOnly)) {
     STATE.name = name;
     goTo('screen-upload'); refreshUploadScreen();
   }
+}
+
+function skipAPIKeys() {
+  const name = document.getElementById('cfg-name').value.trim();
+  if (!name) { alert('Please enter your name first.'); return; }
+  STATE.name = name;
+  STATE.geminiKey = '';
+  STATE.groqKey = '';
+  STATE.manualOnly = true;
+  localStorage.setItem('fridge_name', name);
+  localStorage.setItem('fridge_unlocked', '1');
+  localStorage.setItem('fridge_manual_only', '1');
+  localStorage.removeItem('fridge_groq_key');
+  localStorage.removeItem('fridge_gemini_key');
+  goTo('screen-upload');
+  refreshUploadScreen();
 }
 
 function saveSetup() {
@@ -619,6 +881,19 @@ function refreshUploadScreen() {
   const logs = getLogs();
   document.getElementById('history-btn').style.display = logs.length > 0 ? 'block' : 'none';
   checkRestoreSession();
+
+  // Hide photo features in manual-only mode
+  const photoCard = document.getElementById('photo-card');
+  const processBtn = document.getElementById('process-btn');
+  const aiStatusBar = document.getElementById('ai-status-bar');
+  if (STATE.manualOnly) {
+    if (photoCard) photoCard.style.display = 'none';
+    if (processBtn) processBtn.style.display = 'none';
+    if (aiStatusBar) aiStatusBar.innerHTML = '<div class="ai-status" style="background:#fff3cd;color:#856404">✏️ Manual Entry Mode — No AI Keys</div>';
+  } else {
+    if (photoCard) photoCard.style.display = '';
+    if (processBtn) processBtn.style.display = '';
+  }
 }
 
 function goTo(id) {
@@ -892,7 +1167,9 @@ function renderConfirmScreen() {
   // Draw zoomed thumbnails after DOM is ready
   setTimeout(() => {
     STATE.readings.forEach((r, i) => {
-      drawZoomedThumb('thumb-canvas-' + i, r.photo.dataUrl);
+      if (!r.isManual && r.photo && r.photo.dataUrl) {
+        drawZoomedThumb('thumb-canvas-' + i, r.photo.dataUrl);
+      }
     });
   }, 50);
 }
@@ -912,8 +1189,10 @@ function resetAPIKeys() {
   localStorage.removeItem('fridge_groq_key');
   localStorage.removeItem('fridge_gemini_key');
   localStorage.removeItem('fridge_unlocked');
+  localStorage.removeItem('fridge_manual_only');
   STATE.groqKey = '';
   STATE.geminiKey = '';
+  STATE.manualOnly = false;
   // Show setup screen with API fields already visible
   goTo('screen-setup');
   setTimeout(() => {
@@ -1058,6 +1337,58 @@ loadSettings();
   <img id="modal-img" src="" alt="Gauge photo" />
   <button class="close-btn" onclick="closeModal()">✕ Close</button>
   <p class="hint">Tap anywhere to close</p>
+</div>
+
+
+<!-- SCREEN: Manual Entry -->
+<div class="screen" id="screen-manual">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2 style="font-size:17px;font-weight:600">✏️ Manual Entry</h2>
+    <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="goTo('screen-upload')">← Back</button>
+  </div>
+
+  <!-- Fridge selector -->
+  <div class="card">
+    <div class="card-title">Select Fridge #</div>
+    <div class="fridge-selector" id="fridge-selector">
+      <!-- Generated dynamically -->
+    </div>
+    <div class="fridge-custom-input">
+      <span style="font-size:14px;color:var(--gray-600);white-space:nowrap">Or type:</span>
+      <input type="number" id="fridge-custom" placeholder="e.g. 15" min="1" max="99"
+        oninput="selectFridge(this.value, true)" />
+    </div>
+  </div>
+
+  <!-- Temperature display + suggestions -->
+  <div class="card">
+    <div class="card-title">Temperature (°C)</div>
+    <div class="temp-display" id="temp-display">-</div>
+    <div id="suggested-temps-wrap" style="margin-top:10px;display:none">
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:6px">Recent for this fridge:</div>
+      <div class="suggested-temps" id="suggested-temps"></div>
+    </div>
+  </div>
+
+  <!-- Numpad -->
+  <div class="card" style="padding:16px">
+    <div class="numpad">
+      <button class="num-btn" onclick="numpadPress('1')">1</button>
+      <button class="num-btn" onclick="numpadPress('2')">2</button>
+      <button class="num-btn" onclick="numpadPress('3')">3</button>
+      <button class="num-btn" onclick="numpadPress('4')">4</button>
+      <button class="num-btn" onclick="numpadPress('5')">5</button>
+      <button class="num-btn" onclick="numpadPress('6')">6</button>
+      <button class="num-btn" onclick="numpadPress('7')">7</button>
+      <button class="num-btn" onclick="numpadPress('8')">8</button>
+      <button class="num-btn" onclick="numpadPress('9')">9</button>
+      <button class="num-btn num-dot" onclick="numpadPress('.')">.</button>
+      <button class="num-btn" onclick="numpadPress('0')">0</button>
+      <button class="num-btn num-del" onclick="numpadDelete()">⌫</button>
+    </div>
+  </div>
+
+  <button class="btn btn-success" onclick="submitManualEntry()">✓ Add Reading</button>
 </div>
 
 <!-- PWA Install Banner -->
