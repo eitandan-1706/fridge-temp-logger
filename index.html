@@ -162,7 +162,7 @@
     <h1>KMOW - Fridge Reader</h1>
     <p>Kosher Meals On Wheels Victoria</p>
   </div>
-  <div style="font-size:11px;opacity:0.6;text-align:right;line-height:1.4">v3.0</div>
+  <div style="font-size:11px;opacity:0.6;text-align:right;line-height:1.4">v4.0</div>
 </header>
 
 <!-- SCREEN 1: Setup -->
@@ -385,110 +385,63 @@ async function updateAndShare() {
 async function updateSheets(passedLogs) {
   const btn = document.getElementById('sheets-btn');
   const statusEl = document.getElementById('sheets-status');
-  // Use passed logs if provided, otherwise fetch from storage
   const logs = passedLogs || getLogs();
-  if (logs.length === 0) return alert('No logs to upload yet!');
+  if (logs.length === 0 && getPendingCount() === 0) return alert('No logs to upload yet!');
 
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
-  // Request wake lock to keep screen on during upload
-  let wakeLock = null;
-  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Uploading...'; }
   if (statusEl) {
     statusEl.style.display = 'block';
     statusEl.style.background = '#e8f0fe';
     statusEl.style.color = '#1a56db';
-    statusEl.innerHTML = 'Connecting to Google Sheets...<div style="background:#c7d7f7;border-radius:100px;height:6px;margin-top:8px;overflow:hidden"><div id="sheets-progress" style="height:100%;background:#1a56db;border-radius:100px;width:0%;transition:width 0.4s"></div></div>';
+    statusEl.innerHTML = 'Adding to upload queue...<div style="background:#c7d7f7;border-radius:100px;height:6px;margin-top:8px;overflow:hidden"><div id="sheets-progress" style="height:100%;background:#1a56db;border-radius:100px;width:0%;transition:width 0.4s"></div></div>';
   }
 
   const setProgress = (pct, msg) => {
-    const bar = document.getElementById('sheets-progress');
-    if (bar) bar.style.width = pct + '%';
     if (statusEl) {
-      const existing = statusEl.innerHTML.split('<div')[0];
       statusEl.innerHTML = msg + '<div style="background:#c7d7f7;border-radius:100px;height:6px;margin-top:8px;overflow:hidden"><div id="sheets-progress" style="height:100%;background:#1a56db;border-radius:100px;width:' + pct + '%;transition:width 0.4s"></div></div>';
     }
   };
 
+  let wakeLock = null;
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+
   try {
-    // Group logs by fridge number
-    const byFridge = {};
-    logs.forEach(r => {
-      const key = 'Fridge ' + r.fridge;
-      if (!byFridge[key]) byFridge[key] = [];
-      byFridge[key].push(r);
-    });
+    if (logs.length > 0) addToQueue(logs);
 
-    const fridges = Object.keys(byFridge);
-    const fridgeCount = fridges.length;
-    let successCount = 0;
-    let doneCount = 0;
+    const { success, failed } = await processQueue(statusEl, setProgress);
 
-    for (const fridgeName of fridges) {
-      const readings = byFridge[fridgeName];
-      setProgress(Math.round((doneCount / fridgeCount) * 90), 'Updating ' + fridgeName + ' (' + (doneCount+1) + ' of ' + fridgeCount + ')...');
-
-      const rows = [...readings].reverse().map(r => ({
-        date: r.date || '',
-        time: r.time || '',
-        temp: String(r.temp || ''),
-        loggedBy: r.logged_by || STATE.name || ''
-      }));
-      console.log('Sending to Sheets:', fridgeName, rows);
-
-      const resp = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ fridge: fridgeName, rows: rows })
-      });
-
-      let result;
-      const text = await resp.text();
-      try { result = JSON.parse(text); } catch(e) { throw new Error('Bad response: ' + text.slice(0,100)); }
-      if (result.status !== 'ok') throw new Error(result.error || 'Script error');
-
-      successCount += readings.length;
-      doneCount++;
+    if (failed === 0 && success > 0) {
+      setProgress(100, '✓ ' + success + ' fridge' + (success !== 1 ? 's' : '') + ' uploaded successfully!');
+      if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
+      saveLogs([]);
+      document.getElementById('history-btn') && (document.getElementById('history-btn').style.display = 'none');
+      clearFridgeHighlights();
+    } else if (success > 0 && failed > 0) {
+      setProgress(90, '⚠ ' + success + ' uploaded, ' + failed + ' failed — will retry automatically next session.');
+      if (statusEl) { statusEl.style.background = '#fff3cd'; statusEl.style.color = '#856404'; }
+    } else {
+      setProgress(0, '✗ Upload failed — readings saved locally, will retry next session.');
+      if (statusEl) { statusEl.style.background = '#fef2f2'; statusEl.style.color = '#dc2626'; }
     }
 
-    // Clear local logs after successful upload
-    saveLogs([]);
-    document.getElementById('history-btn') && (document.getElementById('history-btn').style.display = 'none');
-
-    setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + ' — local logs cleared.');
-    if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
     if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
-    // Reset fridge history highlights after confirmed upload
-    clearFridgeHighlights();
-    // Auto-show new session button and update done button to navigate
     if (btn) { btn.disabled = false; btn.textContent = '✓ Done — Start New Session'; btn.onclick = newSession; }
     const newSessionBtn = document.getElementById('new-session-btn');
     if (newSessionBtn) newSessionBtn.style.display = 'block';
 
-
   } catch(e) {
     console.error('Sheets error:', e);
-    console.error('Full Sheets error:', e);
     if (statusEl) {
       statusEl.style.display = 'block';
       statusEl.style.background = '#fef2f2';
       statusEl.style.color = '#dc2626';
-      statusEl.innerHTML = '✗ Error: ' + e.message + '<br><small>Check console for details</small>';
+      statusEl.innerHTML = '✗ ' + e.message + '<br><small>Readings saved locally — will retry next session.</small>';
     }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
     if (wakeLock) { try { await wakeLock.release(); } catch(e2) {} }
   }
 }
 
-
-// ── PWA Install ──────────────────────────────────────────────────────────
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  if (!localStorage.getItem('pwa_dismissed')) {
-    document.getElementById('install-banner').classList.add('show');
-  }
-});
 
 async function installPWA() {
   if (!deferredPrompt) return;
@@ -867,6 +820,141 @@ function renderManualConfirm(reading) {
     </div>`;
 }
 
+
+// ── Upload Queue System ───────────────────────────────────────────────────
+const QUEUE_KEY = 'fridge_upload_queue';
+
+function getQueue() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function saveQueue(queue) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+function addToQueue(logs) {
+  const queue = getQueue();
+  // Group by fridge and add each as separate queue item
+  const byFridge = {};
+  logs.forEach(r => {
+    const key = 'Fridge ' + r.fridge;
+    if (!byFridge[key]) byFridge[key] = [];
+    byFridge[key].push(r);
+  });
+  Object.entries(byFridge).forEach(([fridgeName, readings]) => {
+    // Check if already in queue to avoid duplicates
+    const exists = queue.some(q => q.fridgeName === fridgeName && 
+      q.rows.length === readings.length &&
+      q.rows[0] && readings[0] && q.rows[0].date === readings[0].date);
+    if (!exists) {
+      queue.push({
+        id: Date.now() + '_' + fridgeName,
+        fridgeName,
+        rows: readings.map(r => {
+          const dt = new Date(r.timestamp || Date.now());
+          return {
+            date: r.date || dt.toLocaleDateString('en-AU'),
+            time: r.time || dt.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'}),
+            temp: String(r.temp || ''),
+            loggedBy: r.logged_by || STATE.name || ''
+          };
+        }),
+        status: 'pending',
+        attempts: 0,
+        addedAt: new Date().toISOString()
+      });
+    }
+  });
+  saveQueue(queue);
+  return queue;
+}
+
+function getPendingCount() {
+  return getQueue().filter(q => q.status === 'pending' || q.status === 'failed').length;
+}
+
+async function processQueue(statusEl, setProgress) {
+  let queue = getQueue();
+  const pending = queue.filter(q => q.status === 'pending' || q.status === 'failed');
+  if (pending.length === 0) return { success: 0, failed: 0 };
+
+  let success = 0, failed = 0;
+  const total = pending.length;
+
+  for (let i = 0; i < pending.length; i++) {
+    const item = pending[i];
+    if (setProgress) setProgress(
+      Math.round((i / total) * 90),
+      'Uploading ' + item.fridgeName + ' (' + (i+1) + ' of ' + total + ')...'
+    );
+
+    // Try up to 3 times per item
+    let uploaded = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        if (statusEl) statusEl.innerHTML = 'Retry ' + attempt + ' for ' + item.fridgeName + '...';
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      }
+      try {
+        const resp = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ fridge: item.fridgeName, rows: item.rows })
+        });
+        const text = await resp.text();
+        let result;
+        try { result = JSON.parse(text); } catch(e) { throw new Error('Bad response: ' + text.slice(0,100)); }
+        if (result.status === 'ok') {
+          // Mark as uploaded in queue
+          queue = getQueue();
+          const idx = queue.findIndex(q => q.id === item.id);
+          if (idx >= 0) { queue[idx].status = 'uploaded'; queue[idx].uploadedAt = new Date().toISOString(); }
+          saveQueue(queue);
+          uploaded = true;
+          success++;
+          break;
+        } else {
+          throw new Error(result.error || 'Script error');
+        }
+      } catch(e) {
+        console.warn('Upload attempt', attempt+1, 'failed for', item.fridgeName, ':', e.message);
+        item.lastError = e.message;
+        item.attempts = (item.attempts || 0) + 1;
+      }
+    }
+
+    if (!uploaded) {
+      // Mark as failed in queue — will retry next session
+      queue = getQueue();
+      const idx = queue.findIndex(q => q.id === item.id);
+      if (idx >= 0) { queue[idx].status = 'failed'; queue[idx].lastError = item.lastError; }
+      saveQueue(queue);
+      failed++;
+    }
+  }
+
+  // Clean up old uploaded items (keep last 50)
+  queue = getQueue();
+  const uploaded_items = queue.filter(q => q.status === 'uploaded');
+  const other_items = queue.filter(q => q.status !== 'uploaded');
+  saveQueue([...other_items, ...uploaded_items.slice(-20)]);
+
+  return { success, failed };
+}
+
+function checkPendingUploads() {
+  const count = getPendingCount();
+  if (count > 0) {
+    const statusEl = document.getElementById('sheets-status');
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#fff3cd';
+      statusEl.style.color = '#856404';
+      statusEl.innerHTML = '⚠ ' + count + ' reading' + (count>1?'s':' ') + ' pending upload from previous session. Tap "Update Sheets & Share" to retry.';
+    }
+  }
+}
+
 function loadSettings() {
   let groqKey = localStorage.getItem('fridge_groq_key') || '';
   let geminiKey = localStorage.getItem('fridge_gemini_key') || '';
@@ -973,6 +1061,7 @@ function refreshUploadScreen() {
   const logs = getLogs();
   document.getElementById('history-btn').style.display = logs.length > 0 ? 'block' : 'none';
   checkRestoreSession();
+  setTimeout(checkPendingUploads, 300);
 
   // Hide photo features in manual-only mode
   const photoCard = document.getElementById('photo-card');
