@@ -31,7 +31,7 @@
   .screen { display: none; flex-direction: column; flex: 1; padding: 20px; gap: 16px; max-width: 480px; margin: 0 auto; width: 100%; }
   .screen.active { display: flex; }
   .card { background: white; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
-  .card-title { font-size: 15px; font-weight: 600; color: var(--gray-800); margin-bottom: 12px; }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--gray-800); margin-bottom: 8px; }
   label { display: block; font-size: 13px; font-weight: 500; color: var(--gray-600); margin-bottom: 6px; }
   input[type="text"], input[type="number"] { width: 100%; padding: 12px 14px; border: 1.5px solid var(--gray-200); border-radius: 10px; font-size: 16px; color: var(--gray-800); background: white; outline: none; transition: border-color 0.15s; -webkit-appearance: none; }
   input:focus { border-color: var(--blue-mid); }
@@ -124,20 +124,22 @@
   .restore-banner .restore-dismiss { background:none; border:none; color:rgba(255,255,255,0.6); font-size:18px; cursor:pointer; }
 
   /* Manual Entry Screen */
-  .manual-screen { display:none; flex-direction:column; flex:1; padding:20px; gap:16px; max-width:480px; margin:0 auto; width:100%; }
+  .manual-screen { display:none; flex-direction:column; flex:1; padding:12px; gap:10px; max-width:480px; margin:0 auto; width:100%; }
   .manual-screen.active { display:flex; }
 
   .fridge-selector { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px; }
-  .fridge-btn { padding:14px 8px; background:var(--gray-100); border:2px solid var(--gray-200); border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; -webkit-tap-highlight-color:transparent; }
+  .fridge-btn { padding:10px 4px; background:var(--gray-100); border:2px solid var(--gray-200); border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; -webkit-tap-highlight-color:transparent; }
   .fridge-btn.selected { background:var(--blue-light); border-color:var(--blue); color:var(--blue); }
+  .fridge-btn.has-entry { background:var(--green-light); border-color:var(--green); color:var(--green); }
+  .fridge-btn.has-entry.selected { background:var(--blue-light); border-color:var(--blue); color:var(--blue); }
   .fridge-btn:active { transform:scale(0.95); }
 
-  .temp-display { background:var(--gray-50); border:2px solid var(--gray-200); border-radius:12px; padding:16px; text-align:center; font-size:42px; font-weight:700; color:var(--gray-800); letter-spacing:2px; min-height:80px; display:flex; align-items:center; justify-content:center; transition:border-color 0.15s; }
+  .temp-display { background:var(--gray-50); border:2px solid var(--gray-200); border-radius:12px; padding:10px; text-align:center; font-size:38px; font-weight:700; color:var(--gray-800); letter-spacing:2px; min-height:64px; display:flex; align-items:center; justify-content:center; transition:border-color 0.15s; }
   .temp-display.has-value { border-color:var(--blue); color:var(--blue); }
   .temp-display.invalid { border-color:var(--red); color:var(--red); }
 
   .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .num-btn { padding:18px; background:white; border:1.5px solid var(--gray-200); border-radius:12px; font-size:22px; font-weight:600; cursor:pointer; text-align:center; box-shadow:var(--shadow); -webkit-tap-highlight-color:transparent; transition:all 0.1s; }
+  .num-btn { padding:14px 8px; background:white; border:1.5px solid var(--gray-200); border-radius:12px; font-size:20px; font-weight:600; cursor:pointer; text-align:center; box-shadow:var(--shadow); -webkit-tap-highlight-color:transparent; transition:all 0.1s; }
   .num-btn:active { background:var(--blue-light); border-color:var(--blue); transform:scale(0.95); }
   .num-btn.num-del { background:var(--gray-100); color:var(--red); font-size:20px; }
   .num-btn.num-dot { color:var(--gray-600); }
@@ -278,7 +280,7 @@
   </div>
   <div id="readings-list" style="display:flex;flex-direction:column;gap:12px"></div>
   <button class="btn btn-success" id="submit-btn" onclick="submitAll()">✓ Confirm & Save to CSV</button>
-  <button class="btn btn-secondary" onclick="goTo('screen-upload')">← Add More Photos</button>
+  <button class="btn btn-secondary" onclick="goBackFromConfirm()">← Add More</button>
 </div>
 
 <!-- SCREEN 5: Success -->
@@ -457,6 +459,8 @@ async function updateSheets() {
     setProgress(100, '✓ ' + successCount + ' reading' + (successCount!==1?'s':'') + ' synced across ' + fridgeCount + ' fridge tab' + (fridgeCount!==1?'s':'') + ' — local logs cleared.');
     if (statusEl) { statusEl.style.background = '#dcfce7'; statusEl.style.color = '#16a34a'; }
     if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
+    // Reset fridge history highlights after confirmed upload
+    clearFridgeHighlights();
     // Auto-show new session button and update done button to navigate
     if (btn) { btn.disabled = false; btn.textContent = '✓ Done — Start New Session'; btn.onclick = newSession; }
     const newSessionBtn = document.getElementById('new-session-btn');
@@ -568,6 +572,17 @@ const KNOWN_FRIDGES = [1,2,3,4,5,6,7,8,9,10,11,12,13];
 let manualFridge = null;
 let manualTemp = '-';
 
+function clearFridgeHighlights() {
+  // Clear the temp history so fridge buttons go back to grey
+  // (history used only for highlight and suggestions - safe to clear after upload)
+  localStorage.removeItem(FRIDGE_HISTORY_KEY);
+  // Refresh selector if on manual screen
+  if (document.getElementById('screen-manual') && 
+      document.getElementById('screen-manual').classList.contains('active')) {
+    renderFridgeSelector();
+  }
+}
+
 function getFridgeHistory() {
   try { return JSON.parse(localStorage.getItem(FRIDGE_HISTORY_KEY) || '{}'); } catch(e) { return {}; }
 }
@@ -614,48 +629,56 @@ function getRecentTemps(fridge) {
 function openManualEntry() {
   manualFridge = null;
   manualTemp = '-';
+  manualReadings = [];
   renderFridgeSelector();
   updateTempDisplay();
   document.getElementById('fridge-custom').value = '';
   document.getElementById('suggested-temps-wrap').style.display = 'none';
+
+  // Reset fridge selector highlights
+  document.querySelectorAll('.fridge-btn').forEach(b => {
+    b.classList.remove('selected');
+  });
   goTo('screen-manual');
 }
 
 function renderFridgeSelector() {
   const sel = document.getElementById('fridge-selector');
-  // Show known fridges + any from history
+  if (!sel) return;
   const history = getFridgeHistory();
   const historyFridges = Object.keys(history).map(Number).filter(n => !KNOWN_FRIDGES.includes(n));
   const allFridges = [...KNOWN_FRIDGES, ...historyFridges].sort((a,b) => a-b);
-  sel.innerHTML = allFridges.map(n => `
-    <button class="fridge-btn ${manualFridge == n ? 'selected' : ''}" onclick="selectFridge(${n})">
-      ${n}
-    </button>`).join('');
+  sel.innerHTML = allFridges.map(n => {
+    const hasEntry = history[String(n)] && history[String(n)].length > 0;
+    const isSelected = manualFridge == n;
+    const cls = isSelected ? 'selected' : hasEntry ? 'has-entry' : '';
+    return `<button class="fridge-btn ${cls}" onclick="selectFridge(${n})">${n}</button>`;
+  }).join('');
 }
 
 function selectFridge(num, fromInput = false) {
   if (!num || isNaN(num)) return;
-  manualFridge = Number(num);
+  const newFridge = Number(num);
 
-  // Update selector UI
-  document.querySelectorAll('.fridge-btn').forEach(b => b.classList.remove('selected'));
+  // Mark previous fridge green if it had a temp entered
+  if (manualFridge && manualFridge !== newFridge && isValidTemp(manualTemp)) {
+    recordTempForFridge(manualFridge, manualTemp);
+    renderFridgeSelector();
+  }
+
+  manualFridge = newFridge;
+
   if (!fromInput) {
     document.getElementById('fridge-custom').value = '';
   }
-  // Find and highlight the button if it exists
-  document.querySelectorAll('.fridge-btn').forEach(b => {
-    if (parseInt(b.textContent.trim()) === manualFridge) b.classList.add('selected');
-  });
+
+  // Update selector highlights
+  renderFridgeSelector();
 
   // Pre-fill most frequent temp
   const suggested = getMostFrequentTemp(manualFridge);
-  if (suggested) {
-    manualTemp = suggested;
-    updateTempDisplay();
-  } else {
-    manualTemp = '-';
-    updateTempDisplay();
-  }
+  manualTemp = suggested || '-';
+  updateTempDisplay();
 
   // Show recent temps
   const recents = getRecentTemps(manualFridge);
@@ -677,28 +700,49 @@ function useSuggestedTemp(temp) {
 }
 
 function numpadPress(digit) {
-  if (manualTemp === '-' && digit === '.') {
-    manualTemp = '-0.';
-  } else if (manualTemp === '-') {
-    manualTemp = '-' + digit;
-  } else {
-    // Prevent multiple dots
-    if (digit === '.' && manualTemp.includes('.')) return;
-    // Max 4 digits total (e.g. -25.5)
-    const digits = manualTemp.replace('-','').replace('.','');
-    if (digits.length >= 4) return;
+  // Handle decimal point
+  if (digit === '.') {
+    if (manualTemp.includes('.')) return; // only one dot
+    if (manualTemp === '' || manualTemp === '-') manualTemp = manualTemp + '0';
+    manualTemp += '.';
+    updateTempDisplay();
+    return;
+  }
+  // After decimal, only allow 1 digit
+  if (manualTemp.includes('.')) {
+    const afterDot = manualTemp.split('.')[1] || '';
+    if (afterDot.length >= 1) return; // max 1 decimal place
     manualTemp += digit;
+    updateTempDisplay();
+    return;
+  }
+  // Before decimal, max 2 digits (e.g. -25)
+  const digits = manualTemp.replace('-','');
+  if (digits.length >= 2) return;
+  if (manualTemp === '' || manualTemp === '-') {
+    manualTemp = (manualTemp === '-' ? '-' : '') + digit;
+  } else {
+    manualTemp += digit;
+  }
+  updateTempDisplay();
+}
+
+function numpadToggleMinus() {
+  if (manualTemp === '' || manualTemp === '-') {
+    manualTemp = manualTemp === '-' ? '' : '-';
+  } else if (manualTemp.startsWith('-')) {
+    manualTemp = manualTemp.slice(1);
+  } else {
+    manualTemp = '-' + manualTemp;
   }
   updateTempDisplay();
 }
 
 function numpadDelete() {
   if (manualTemp.length <= 1) {
-    manualTemp = '-';
+    manualTemp = '';
   } else {
     manualTemp = manualTemp.slice(0, -1);
-    // If only '-' left after delete
-    if (manualTemp === '') manualTemp = '-';
   }
   updateTempDisplay();
 }
@@ -706,43 +750,84 @@ function numpadDelete() {
 function updateTempDisplay() {
   const el = document.getElementById('temp-display');
   if (!el) return;
-  el.textContent = manualTemp + (manualTemp !== '-' ? '°' : '');
+  const display = manualTemp === '' ? '–' : manualTemp + (isValidTemp(manualTemp) ? '°' : '');
+  el.textContent = display;
   el.className = 'temp-display';
-  if (manualTemp !== '-' && isValidTemp(manualTemp)) el.classList.add('has-value');
-  else if (manualTemp !== '-') el.classList.add('invalid');
+  if (isValidTemp(manualTemp)) el.classList.add('has-value');
+  else if (manualTemp !== '' && manualTemp !== '-') el.classList.add('invalid');
 }
 
+// Store accumulated manual readings
+let manualReadings = [];
+
 function submitManualEntry() {
-  // Validate
-  if (!manualFridge) {
-    alert('Please select or enter a fridge number.');
-    return;
-  }
-  if (!isValidTemp(manualTemp)) {
-    alert('Please enter a valid negative temperature (e.g. -4).');
+  // Must have at least one reading OR a current valid entry
+  const hasCurrent = manualFridge && isValidTemp(manualTemp);
+  if (manualReadings.length === 0 && !hasCurrent) {
+    alert('Please select a fridge and enter a temperature first.');
     return;
   }
 
-  // Record in history for future suggestions
-  recordTempForFridge(manualFridge, manualTemp);
+  // Save current entry if valid
+  if (hasCurrent) {
+    recordTempForFridge(manualFridge, manualTemp);
+    const timestamp = new Date().toISOString();
+    manualReadings.push({
+      photo: { dataUrl: null },
+      fridge: String(manualFridge),
+      temp: manualTemp,
+      confidence: 'manual',
+      timestamp,
+      error: null,
+      isManual: true
+    });
+    renderFridgeSelector();
+  }
 
-  // Create a reading object exactly like the AI produces
-  const timestamp = new Date().toISOString();
-  const reading = {
-    photo: { dataUrl: null },  // No photo for manual entry
-    fridge: String(manualFridge),
-    temp: manualTemp,
-    confidence: 'manual',
-    timestamp,
-    error: null,
-    isManual: true
-  };
+  // Go straight to review
+  reviewManualReadings();
+}
 
-  // Add to STATE readings and go to confirm screen
-  STATE.readings = [reading];
-  STATE.photos = [{ dataUrl: null, file: { name: 'manual', type: 'manual' } }];
-  renderManualConfirm(reading);
+function reviewManualReadings() {
+  if (manualReadings.length === 0) {
+    alert('No readings to review yet.');
+    return;
+  }
+  STATE.readings = [...manualReadings];
+  STATE.photos = manualReadings.map(() => ({ dataUrl: null, file: { name: 'manual', type: 'manual' } }));
+  renderManualConfirmAll();
   goTo('screen-confirm');
+}
+
+function renderManualConfirmAll() {
+  document.getElementById('confirm-count').textContent = manualReadings.length + ' reading' + (manualReadings.length !== 1 ? 's' : '') + ' (manual)';
+  document.getElementById('readings-list').innerHTML = manualReadings.map((r, i) => {
+    const dtStr = new Date(r.timestamp).toLocaleString('en-AU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<div class="reading-card">
+      <div style="width:80px;height:80px;border-radius:8px;background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0">✏️</div>
+      <div class="fields">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="badge badge-ok">✓ Manual</span>
+          <span style="font-size:11px;color:var(--gray-400)">${dtStr}</span>
+        </div>
+        <div class="field-row">
+          <div class="field-wrap">
+            <label>Fridge # <span style="color:var(--red)">*</span></label>
+            <input type="text" value="${r.fridge}"
+              oninput="STATE.readings[${i}].fridge=this.value;this.style.borderColor=this.value.trim()?'':'var(--red)'"
+              placeholder="Required" />
+          </div>
+          <div class="field-wrap">
+            <label>Temp °C <span style="color:var(--red)">*</span></label>
+            <input type="text" value="${r.temp}"
+              oninput="enforceMinusPrefix(this,${i})"
+              placeholder="-0.0"
+              style="font-weight:600;font-size:15px" />
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderManualConfirm(reading) {
@@ -917,27 +1002,28 @@ function handleFiles(files) {
 
 function enforceMinusPrefix(input, idx) {
   let val = input.value;
-  // Always ensure it starts with '-'
-  if (val === '' || val === '-') {
-    input.value = '-';
+  if (val === '') {
     STATE.readings[idx].temp = '';
+    input.style.borderColor = 'var(--red)';
     return;
   }
-  // Remove any accidental double minus
+  // Remove double minus
   val = val.replace(/--+/, '-');
-  // Ensure starts with minus
-  if (!val.startsWith('-')) val = '-' + val;
-  // Only allow digits and one decimal point after the minus
-  val = '-' + val.slice(1).replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+  // Only allow minus at start, digits and one decimal
+  val = val.replace(/[^0-9.\-]/g, '');
+  if (val.indexOf('-') > 0) val = val.replace(/-/g, '');
+  // Only one decimal point
+  const parts = val.split('.');
+  if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
   input.value = val;
   STATE.readings[idx].temp = val;
   input.style.borderColor = isValidTemp(val) ? '' : 'var(--red)';
 }
 
 function isValidTemp(val) {
-  if (!val || val === '-') return false;
+  if (!val || val === '' || val === '-') return false;
   const num = parseFloat(val);
-  return !isNaN(num) && num < 0;
+  return !isNaN(num) && num !== 0 && isFinite(num);
 }
 
 function removePhoto(i) { STATE.photos.splice(i,1); renderThumbs(); savePhotoSession(); }
@@ -1241,7 +1327,7 @@ function submitAll() {
     !r.fridge || r.fridge === '?' || !r.temp || r.temp === '?' || r.temp === '-' || !isValidTemp(r.temp)
   );
   if (invalid.length > 0) {
-    alert(`Please fill in all fields before saving.\n${invalid.length} reading${invalid.length>1?'s are':' is'} missing fridge number or valid temperature.\nTemperature must be a negative number (e.g. -2.5)`);
+    alert('Please fill in all fields before saving.\n' + invalid.length + ' reading' + (invalid.length>1?'s are':' is') + ' missing fridge number or valid temperature (e.g. -2.5 or 4.0).');
     // Highlight invalid fields
     STATE.readings.forEach((r, i) => {
       const fridgeInput = document.querySelector(`#readings-list .reading-card:nth-child(${i+1}) input[type="text"]`);
@@ -1316,6 +1402,7 @@ function clearHistory() {
 function newSession() {
   STATE.photos = [];
   STATE.readings = [];
+  manualReadings = [];
   // Reset success screen buttons
   const sheetsBtn = document.getElementById('sheets-btn');
   if (sheetsBtn) { sheetsBtn.disabled = false; sheetsBtn.textContent = '📊 Update Google Sheets'; }
@@ -1325,6 +1412,15 @@ function newSession() {
   if (statusEl) statusEl.style.display = 'none';
   goTo('screen-upload');
   refreshUploadScreen();
+}
+
+function goBackFromConfirm() {
+  // If came from manual entry, go back there
+  if (STATE.readings.length > 0 && STATE.readings[0].isManual) {
+    goTo('screen-manual');
+  } else {
+    goTo('screen-upload');
+  }
 }
 
 function logMore() { STATE.photos=[]; STATE.readings=[]; goTo('screen-upload'); refreshUploadScreen(); }
@@ -1371,7 +1467,7 @@ loadSettings();
   </div>
 
   <!-- Numpad -->
-  <div class="card" style="padding:16px">
+  <div class="card" style="padding:10px">
     <div class="numpad">
       <button class="num-btn" onclick="numpadPress('1')">1</button>
       <button class="num-btn" onclick="numpadPress('2')">2</button>
@@ -1382,13 +1478,14 @@ loadSettings();
       <button class="num-btn" onclick="numpadPress('7')">7</button>
       <button class="num-btn" onclick="numpadPress('8')">8</button>
       <button class="num-btn" onclick="numpadPress('9')">9</button>
-      <button class="num-btn num-dot" onclick="numpadPress('.')">.</button>
+      <button class="num-btn num-dot" onclick="numpadToggleMinus()">+/−</button>
       <button class="num-btn" onclick="numpadPress('0')">0</button>
-      <button class="num-btn num-del" onclick="numpadDelete()">⌫</button>
+      <button class="num-btn num-dot" onclick="numpadPress('.')">.</button>
+      <button class="num-btn num-del" style="grid-column:span 3" onclick="numpadDelete()">⌫ Delete</button>
     </div>
   </div>
 
-  <button class="btn btn-success" onclick="submitManualEntry()">✓ Add Reading</button>
+  <button class="btn btn-success" onclick="submitManualEntry()">✓ Finished</button>
 </div>
 
 <!-- PWA Install Banner -->
