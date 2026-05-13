@@ -289,7 +289,7 @@
     <div class="success-icon">✓</div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Saved!</h2>
     <p id="success-msg" style="color:var(--gray-600);font-size:14px;line-height:1.6;margin-bottom:20px"></p>
-    <div id="sheets-status" style="display:none;margin-bottom:16px;padding:12px;border-radius:10px;font-size:13px;text-align:left"></div>
+    <div id="sheets-status" style="display:none;margin-bottom:16px;padding:12px;border-radius:10px;font-size:13px;text-align:left;word-break:break-word"></div>
     <div id="success-summary" style="text-align:left;margin-bottom:20px"></div>
     <button class="btn btn-success" onclick="updateAndShare()" id="sheets-btn" style="margin-bottom:10px">📊 Update Sheets &amp; Share</button>
     <button class="btn btn-primary" id="new-session-btn" onclick="newSession()" style="margin-bottom:10px;display:none">🆕 Start New Session</button>
@@ -375,21 +375,18 @@ async function updateAndShare() {
   // Save backup before anything else
   STATE._lastUploadedLogs = [...logs];
 
-  // Run share immediately + sheets update in parallel
-  const [_, sheetsResult] = await Promise.allSettled([
-    shareCSV(true),      // Opens share sheet immediately — user doesn't wait
-    updateSheets()       // Runs in background at the same time
-  ]);
+  // Share CSV immediately (non-blocking)
+  shareCSV(true);
 
-  if (sheetsResult.status === 'rejected') {
-    console.error('Sheets update failed:', sheetsResult.reason);
-  }
+  // Update Sheets with the logs we already have (don't re-fetch)
+  await updateSheets(logs);
 }
 
-async function updateSheets() {
+async function updateSheets(passedLogs) {
   const btn = document.getElementById('sheets-btn');
   const statusEl = document.getElementById('sheets-status');
-  const logs = getLogs();
+  // Use passed logs if provided, otherwise fetch from storage
+  const logs = passedLogs || getLogs();
   if (logs.length === 0) return alert('No logs to upload yet!');
 
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
@@ -431,11 +428,12 @@ async function updateSheets() {
       setProgress(Math.round((doneCount / fridgeCount) * 90), 'Updating ' + fridgeName + ' (' + (doneCount+1) + ' of ' + fridgeCount + ')...');
 
       const rows = [...readings].reverse().map(r => ({
-        date: r.date,
-        time: r.time,
-        temp: r.temp,
-        loggedBy: r.logged_by
+        date: r.date || '',
+        time: r.time || '',
+        temp: String(r.temp || ''),
+        loggedBy: r.logged_by || STATE.name || ''
       }));
+      console.log('Sending to Sheets:', fridgeName, rows);
 
       const resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
@@ -469,13 +467,15 @@ async function updateSheets() {
 
   } catch(e) {
     console.error('Sheets error:', e);
+    console.error('Full Sheets error:', e);
     if (statusEl) {
+      statusEl.style.display = 'block';
       statusEl.style.background = '#fef2f2';
       statusEl.style.color = '#dc2626';
-      statusEl.innerHTML = '✗ Error: ' + e.message;
+      statusEl.innerHTML = '✗ Error: ' + e.message + '<br><small>Check console for details</small>';
     }
     if (btn) { btn.disabled = false; btn.textContent = '📊 Update Google Sheets'; }
-    if (wakeLock) { try { await wakeLock.release(); } catch(e) {} }
+    if (wakeLock) { try { await wakeLock.release(); } catch(e2) {} }
   }
 }
 
@@ -761,15 +761,20 @@ function updateTempDisplay() {
 let manualReadings = [];
 
 function submitManualEntry() {
-  // Must have at least one reading OR a current valid entry
   const hasCurrent = manualFridge && isValidTemp(manualTemp);
+
+  // Check if current fridge/temp already saved (avoid duplicates on back+retry)
+  const alreadySaved = manualReadings.some(r =>
+    r.fridge === String(manualFridge) && r.temp === manualTemp
+  );
+
   if (manualReadings.length === 0 && !hasCurrent) {
     alert('Please select a fridge and enter a temperature first.');
     return;
   }
 
-  // Save current entry if valid
-  if (hasCurrent) {
+  // Save current entry only if valid and not already saved
+  if (hasCurrent && !alreadySaved) {
     recordTempForFridge(manualFridge, manualTemp);
     const timestamp = new Date().toISOString();
     manualReadings.push({
@@ -784,17 +789,19 @@ function submitManualEntry() {
     renderFridgeSelector();
   }
 
-  // Go straight to review
+  // Go to review
   reviewManualReadings();
 }
 
 function reviewManualReadings() {
   if (manualReadings.length === 0) {
-    alert('No readings to review yet.');
+    alert('No readings to review yet. Please enter at least one fridge reading.');
     return;
   }
-  STATE.readings = [...manualReadings];
+  // Always use full copy of all accumulated readings
+  STATE.readings = manualReadings.map(r => ({...r}));
   STATE.photos = manualReadings.map(() => ({ dataUrl: null, file: { name: 'manual', type: 'manual' } }));
+  console.log('Reviewing', STATE.readings.length, 'readings:', STATE.readings.map(r => 'Fridge ' + r.fridge + ': ' + r.temp));
   renderManualConfirmAll();
   goTo('screen-confirm');
 }
@@ -1353,6 +1360,7 @@ function submitAll() {
     document.getElementById('success-summary').innerHTML = newRows.map(r =>
       `<div class="summary-row"><span class="fridge-label">Fridge ${r.fridge}</span><span class="temp">${r.temp}°C</span><span style="font-size:12px;color:var(--gray-400)">${r.date} ${r.time}</span></div>`
     ).join('');
+    manualReadings = []; // Clear after successful save
     goTo('screen-success');
   } catch(e) {
     alert('Error saving: ' + e.message);
@@ -1415,8 +1423,22 @@ function newSession() {
 }
 
 function goBackFromConfirm() {
+  // Always re-enable submit button in case it was disabled
+  const submitBtn = document.getElementById('submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '✓ Confirm & Save to CSV';
+  }
   // If came from manual entry, go back there
   if (STATE.readings.length > 0 && STATE.readings[0].isManual) {
+    // Reset current selection so user starts fresh
+    manualFridge = null;
+    manualTemp = '-';
+    updateTempDisplay();
+    renderFridgeSelector();
+    const sugWrap = document.getElementById('suggested-temps-wrap');
+    if (sugWrap) sugWrap.style.display = 'none';
+    document.getElementById('fridge-custom').value = '';
     goTo('screen-manual');
   } else {
     goTo('screen-upload');
